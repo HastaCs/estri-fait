@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Juego de pelea 2D **"ESTRI FAIT"**, con **Phaser 3.80.1 por CDN y JS sin build**. Dos escenas. Contenido, nombres y comentarios en español.
+Juego de pelea 2D **"STRI FAIT — Version Wiber Turbo 2"**, con **Phaser 3.80.1 por CDN y JS sin build**. Dos escenas. Contenido, nombres y comentarios en español.
 
 ## Ejecutar / verificar
 - No hay npm, build, lint ni tests. **No crear `package.json`** ni instalar dependencias.
@@ -10,11 +10,11 @@ Juego de pelea 2D **"ESTRI FAIT"**, con **Phaser 3.80.1 por CDN y JS sin build**
 
 ## Estructura / arranque
 - `index.html` carga **en orden**: Phaser (CDN) → `js/characters.js` → `js/scenes/GameScene.js` → `js/scenes/SelectScene.js` → `js/main.js`. El orden importa. No hay módulos: las clases y `CHARACTERS` son globales.
-- Escenas en `js/main.js` (`scene: [SelectScene, GameScene]`): **`SelectScene`** (elegir 2 de 4 luchadores) → **`GameScene`** (combate, recibe `{p1, p2}` = índices de `CHARACTERS`).
+- Escenas en `js/main.js` (`scene: [SelectScene, GameScene]`): **`SelectScene`** (elegir 2 de 6 luchadores; muestra **cuerpo entero animado** del personaje resaltado) → **`GameScene`** (combate, recibe `{p1, p2}` = índices de `CHARACTERS`).
 - Canvas fijo 1280x720 con `Phaser.Scale.FIT`.
 
 ## Personajes (`js/characters.js`)
-`CHARACTERS` es la fuente de verdad (jorge, dani, bea, merche). Por personaje: `face`, `sheet` (texture key), `sheetPath`, `frameW/frameH`, `originY` (base de los pies), `sourceH` (alto del personaje en píxeles, para escalar), `facesRight`, `color`. `GameScene` carga todos los sheets y escala cada uno a `FIGHTER_TARGET_H` (`scale = FIGHTER_TARGET_H / sourceH`).
+`CHARACTERS` es la fuente de verdad (jorge, dani, bea, merche, xavi, agustin). Por personaje: `face`, `sheet` (texture key), `sheetPath`, `frameW/frameH`, `originY` (base de los pies), `sourceH` (alto del personaje en píxeles, para escalar), `facesRight`, `color`. `GameScene` carga todos los sheets y escala cada uno a `FIGHTER_TARGET_H` (`scale = FIGHTER_TARGET_H / sourceH`).
 - Regla de orientación (en `GameScene.addFighter`): el de la **izquierda mira a la derecha** y el de la **derecha a la izquierda**; `flipX = facesRight !== mustFaceRight`.
 - Al añadir un personaje: crea su sheet + cara, añade una entrada a `CHARACTERS`; no hardcodees tamaños en las escenas.
 
@@ -23,7 +23,10 @@ Los **tamaños de frame viven en `CHARACTERS`** y deben coincidir con el PNG rea
 - `assets/fondo_sheet.png` — 752x360, 8 frames (generado desde `assets/fondo.gif`); fondo animado, se dibuja cubriendo el canvas (`scale=2`).
 - `assets/jorge/breathe_sheet_HD.png` — 768x1280, 8 frames; idle con **alpha real**, se usa tal cual.
 - `assets/dani/dani_idle_sheet.png` — 643x908, 8 frames (4x2); generado por `tools/make_dani.py`.
-- `assets/bea/bea_idle_sheet.png` (367x543) y `assets/merche/merche_idle_sheet.png` (364x531) — 8 frames (4x2); generados por `tools/make_bea_merche.py`. Cada personaje tiene también `<key>_face.png` para la selección.
+- `assets/bea/bea_idle_sheet.png` (330x529) y `assets/merche/merche_idle_sheet.png` (357x525) — 8 frames (4x2); generados por `tools/make_bea_merche.py`.
+- `assets/xavi/xavi_idle_sheet.png` (531x669) y `assets/agustin/agustin_idle_sheet.png` (393x598) — 8 frames (4x2); generados por `tools/make_xavi_agustin.py`.
+- Cada personaje tiene también `<key>_face.png` para la selección.
+- `assets/audio/audio1.mp3` — música de fondo, se reproduce en bucle en `GameScene`.
 
 `groundY`, `p1X` y `p2X` son constantes manuales en `GameScene.create`. Los `origin` son fracciones atadas a la base de los pies de cada sheet; al cambiar un sheet hay que recalcular `originY`/`sourceH`.
 
@@ -34,6 +37,7 @@ Mantener cada spritesheet por debajo de 8192px de ancho (límite de textura GPU)
 ## tools/ (generadores Pillow, ejecución manual)
 - `make_dani.py` — `assets/dani/dani.jpeg` → `dani_idle.png`, `dani_idle_sheet.png` (respiración por rotación suave).
 - `make_bea_merche.py` — `assets/bea_merche.jpeg` → recorta Bea y Merche, quita sombras y genera sus `*_idle.png`/`*_idle_sheet.png` (respiración por estiramiento vertical anclado a los pies) y `*_face.png`.
+- `make_xavi_agustin.py` — `assets/xavi_agustin.jpeg` → recorta Xavi y Agustín y genera sus `*_idle.png`/`*_idle_sheet.png`/`*_face.png` (igual que Bea/Merche).
 - `make_faces.py` — recorta las caras de Jorge y Dani para la selección.
 - `make_sprites.py` y `cutout.py` — **obsoletos**: sus rutas `SRC` hardcodeadas ya no existen. No ejecutar a ciegas.
 - `fondo_sheet.png` se generó ad-hoc (frames del GIF → tira horizontal); no hay script que lo reproduzca.

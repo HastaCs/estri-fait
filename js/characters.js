@@ -44,12 +44,38 @@ const CHARACTERS = [
     face: 'mercheFace',
     sheet: 'mercheSheet',
     sheetPath: 'assets/merche/merche_idle_sheet.png',
-    frameW: 364,
-    frameH: 531,
-    originY: 0.9247,
-    sourceH: 451,
-    facesRight: true,
+    frameW: 357,
+    frameH: 525,
+    originY: 0.9238,
+    sourceH: 445,
+    facesRight: false,
     color: 0x7cfc00
+  },
+  {
+    key: 'xavi',
+    name: 'XAVI',
+    face: 'xaviFace',
+    sheet: 'xaviSheet',
+    sheetPath: 'assets/xavi/xavi_idle_sheet.png',
+    frameW: 531,
+    frameH: 669,
+    originY: 0.9402,
+    sourceH: 589,
+    facesRight: true,
+    color: 0xb388ff
+  },
+  {
+    key: 'agustin',
+    name: 'AGUSTIN',
+    face: 'agustinFace',
+    sheet: 'agustinSheet',
+    sheetPath: 'assets/agustin/agustin_idle_sheet.png',
+    frameW: 393,
+    frameH: 598,
+    originY: 0.9331,
+    sourceH: 518,
+    facesRight: false,
+    color: 0xffd166
   }
 ];
 

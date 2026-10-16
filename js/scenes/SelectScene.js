@@ -4,62 +4,110 @@ class SelectScene extends Phaser.Scene {
   }
 
   preload() {
-    CHARACTERS.forEach((c) => this.load.image(c.face, `assets/${c.key}/${c.key}_face.png`));
+    if (!this.cache.audio.exists('bgm')) {
+      this.load.audio('bgm', 'assets/audio/audio1.mp3');
+    }
+    CHARACTERS.forEach((c) => {
+      this.load.image(c.face, `assets/${c.key}/${c.key}_face.png`);
+      this.load.spritesheet(c.sheet, c.sheetPath, {
+        frameWidth: c.frameW,
+        frameHeight: c.frameH
+      });
+    });
   }
 
   create() {
     this.cursor = 0;
     this.p1 = null;
     this.p2 = null;
+    this.previewH = 350;
 
     this.drawBackground();
+    this.addSunAndBeams();
     this.drawTitle();
+    this.addSparkles();
 
-    const xs = [220, 500, 780, 1060];
-    this.panels = CHARACTERS.map((c, i) => this.createPanel(xs[i], 380, c, i));
+    this.startMusic();
 
-    this.add
-      .text(this.scale.width / 2, 660, 'A / D  MOVER        ENTER  ELEGIR        (P1 y despues P2)', {
+    CHARACTERS.forEach((c) => {
+      const key = `${c.key}Idle`;
+      if (!this.anims.exists(key)) {
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(c.sheet, { start: 0, end: 7 }),
+          frameRate: 6,
+          repeat: -1
+        });
+      }
+    });
+
+    this.preview = this.add.sprite(300, 560, CHARACTERS[0].sheet);
+    this.preview.setOrigin(0.5, CHARACTERS[0].originY);
+    this.preview.setDepth(6);
+
+    this.previewName = this.add
+      .text(300, 614, CHARACTERS[0].name, {
         fontFamily: 'monospace',
-        fontSize: '24px',
+        fontSize: '34px',
+        fontStyle: 'bold',
         color: '#ffe600'
       })
       .setOrigin(0.5)
-      .setLetterSpacing(2);
+      .setLetterSpacing(3)
+      .setDepth(6);
+
+    const cols = [640, 870, 1100];
+    const rows = [270, 450];
+    this.panels = CHARACTERS.map((c, i) => {
+      const cx = cols[i % 3];
+      const cy = rows[Math.floor(i / 3)];
+      return this.createPanel(cx, cy, c, i);
+    });
 
     this.prompt = this.add
-      .text(this.scale.width / 2, 620, 'JUGADOR 1: ELIGE TU LUCHADOR', {
+      .text(300, 172, 'JUGADOR 1: ELIGE TU LUCHADOR', {
         fontFamily: 'monospace',
-        fontSize: '24px',
+        fontSize: '22px',
         color: '#00e5ff'
       })
       .setOrigin(0.5)
-      .setLetterSpacing(2);
+      .setLetterSpacing(1)
+      .setDepth(6);
 
-    this.keys = this.input.keyboard.addKeys('A,D,LEFT,RIGHT,ENTER,SPACE');
+    this.add
+      .text(this.scale.width / 2, 695, 'A / D  MOVER        W / S  FILA        ENTER  ELEGIR', {
+        fontFamily: 'monospace',
+        fontSize: '22px',
+        color: '#ffe600'
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(1)
+      .setDepth(6);
+
+    this.keys = this.input.keyboard.addKeys('A,D,LEFT,RIGHT,ENTER,SPACE,W,S,UP,DOWN');
 
     this.refresh();
   }
 
   drawBackground() {
-    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x0a0614).setOrigin(0);
+    this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x06030f).setOrigin(0);
 
-    const g = this.add.graphics();
-    const horizon = 470;
+    const g = this.add.graphics().setDepth(0);
+    const horizon = 540;
 
     g.fillStyle(0x120a26, 1);
     g.fillRect(0, horizon, this.scale.width, this.scale.height - horizon);
 
-    g.lineStyle(2, 0xff2d95, 0.55);
-    for (let i = 0; i <= 16; i++) {
-      const t = i / 16;
+    g.lineStyle(2, 0xff2d95, 0.7);
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
       g.beginPath();
-      g.moveTo(640 + (t - 0.5) * 90, horizon);
-      g.lineTo(640 + (t - 0.5) * 1800, this.scale.height);
+      g.moveTo(640 + (t - 0.5) * 110, horizon);
+      g.lineTo(640 + (t - 0.5) * 2000, this.scale.height);
       g.strokePath();
     }
 
-    g.lineStyle(2, 0x00e5ff, 0.5);
+    g.lineStyle(2, 0x00e5ff, 0.6);
     let y = horizon + 6;
     let step = 8;
     while (y < this.scale.height) {
@@ -71,89 +119,229 @@ class SelectScene extends Phaser.Scene {
       step *= 1.35;
     }
 
-    g.fillStyle(0x1b0f33, 1);
-    g.fillRect(0, 150, this.scale.width, 320);
+    const glow = this.add
+      .rectangle(0, horizon, this.scale.width, 2, 0xff2d95)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(1);
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.5, to: 1 },
+      duration: 700,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
 
+    g.fillStyle(0x1b0f33, 0.92);
+    g.fillRect(520, 210, this.scale.width - 520, 440);
+
+    const scan = this.add.graphics().setDepth(20);
+    scan.fillStyle(0x000000, 0.22);
     for (let i = 0; i < this.scale.height; i += 4) {
-      this.add.rectangle(0, i, this.scale.width, 1, 0x000000, 0.18).setOrigin(0);
+      scan.fillRect(0, i, this.scale.width, 1);
+    }
+  }
+
+  addSunAndBeams() {
+    const g = this.add.graphics().setDepth(1);
+    const cx = 640;
+    const cy = 84;
+    const r = 180;
+
+    g.fillStyle(0xff2d95, 0.18);
+    g.fillCircle(cx, cy, r);
+
+    for (let y = Math.round(cy - r); y <= cy + r; y++) {
+      const dy = y - cy;
+      const half = Math.sqrt(r * r - dy * dy);
+      if (!half) continue;
+      const band = Math.floor((y - (cy - r)) / 16) % 2;
+      g.fillStyle(band ? 0xff2d95 : 0x7a2bff, 0.30);
+      g.fillRect(cx - half, y, half * 2, 1);
+    }
+
+    for (let i = 0; i < 2; i++) {
+      const beam = this.add
+        .rectangle(cx, cy + 180, 1200, 5, i === 0 ? 0xff2d95 : 0x00e5ff, 0.12)
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(1);
+      beam.setOrigin(0.5);
+      this.tweens.add({
+        targets: beam,
+        angle: i === 0 ? 360 : -360,
+        duration: 16000,
+        repeat: -1
+      });
     }
   }
 
   drawTitle() {
-    const title = this.add
-      .text(this.scale.width / 2, 82, 'ESTRI FAIT', {
+    const cx = this.scale.width / 2;
+
+    const ghost = this.add
+      .text(cx + 3, 59, 'STRI FAIT', {
         fontFamily: 'monospace',
-        fontSize: '84px',
+        fontSize: '72px',
+        fontStyle: 'bold',
+        color: '#ff2d95'
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(6)
+      .setAlpha(0.55)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(3);
+
+    const ghost2 = this.add
+      .text(cx - 3, 53, 'STRI FAIT', {
+        fontFamily: 'monospace',
+        fontSize: '72px',
+        fontStyle: 'bold',
+        color: '#00e5ff'
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(6)
+      .setAlpha(0.55)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(3);
+
+    const title = this.add
+      .text(cx, 56, 'STRI FAIT', {
+        fontFamily: 'monospace',
+        fontSize: '72px',
         fontStyle: 'bold',
         color: '#ffe600'
       })
       .setOrigin(0.5)
-      .setLetterSpacing(6);
-    title.setStroke('#ff2d95', 8);
-    title.setShadow(0, 8, '#7a2bff', 0, true, true);
+      .setLetterSpacing(6)
+      .setDepth(4);
+    title.setStroke('#ff2d95', 7);
 
     this.add
-      .text(this.scale.width / 2, 150, 'ELIGE DOS LUCHADORES', {
+      .text(cx, 118, 'VERSION WIBER TURBO 2', {
         fontFamily: 'monospace',
-        fontSize: '26px',
+        fontSize: '20px',
+        color: '#c792ff'
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(4)
+      .setDepth(4);
+
+    this.add
+      .text(cx, 148, 'ELIGE DOS LUCHADORES', {
+        fontFamily: 'monospace',
+        fontSize: '20px',
         color: '#00e5ff'
       })
       .setOrigin(0.5)
-      .setLetterSpacing(4);
+      .setLetterSpacing(3)
+      .setDepth(4);
 
     this.tweens.add({
       targets: title,
-      scale: 1.03,
-      duration: 900,
+      scale: 1.04,
+      duration: 850,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
   }
 
+  addSparkles() {
+    const colors = [0xffffff, 0x00e5ff, 0xff2d95, 0xffe600];
+    const positions = [];
+    for (let i = 0; i < 46; i++) {
+      positions.push({
+        x: Math.random() * this.scale.width,
+        y: Math.random() * 600
+      });
+    }
+
+    positions.forEach((p, i) => {
+      const s = this.add
+        .circle(p.x, p.y, 1.5 + Math.random() * 1.5, colors[i % colors.length])
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setDepth(7);
+      this.tweens.add({
+        targets: s,
+        alpha: { from: 0, to: 1 },
+        scale: { from: 0.4, to: 1.3 },
+        duration: 500 + Math.random() * 900,
+        yoyo: true,
+        repeat: -1,
+        delay: Math.random() * 900,
+        ease: 'Sine.easeInOut'
+      });
+    });
+  }
+
   createPanel(cx, cy, c, i) {
-    const w = 260;
-    const h = 300;
+    const w = 180;
+    const h = 170;
 
-    const glow = this.add.rectangle(cx, cy, w, h, c.color, 0.12);
-    const border = this.add.rectangle(cx, cy, w, h).setStrokeStyle(4, c.color);
-    const inner = this.add.rectangle(cx, cy, w - 14, h - 14, 0x1b0f33);
+    const glow = this.add
+      .rectangle(cx, cy, w, h, c.color, 0.12)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(5);
+    this.tweens.add({
+      targets: glow,
+      alpha: { from: 0.12, to: 0.22 },
+      duration: 900 + i * 120,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
 
-    const image = this.add.image(cx, cy - 14, c.face);
-    const scale = Math.min((w - 36) / image.width, (h - 84) / image.height);
+    const border = this.add.rectangle(cx, cy, w, h).setStrokeStyle(4, c.color).setDepth(5);
+    const inner = this.add.rectangle(cx, cy, w - 12, h - 12, 0x1b0f33).setDepth(5);
+
+    const image = this.add.image(cx, cy - 10, c.face).setDepth(5);
+    const scale = Math.min((w - 28) / image.width, (h - 52) / image.height);
     image.setScale(scale);
 
     const name = this.add
-      .text(cx, cy + h / 2 - 28, c.name, {
+      .text(cx, cy + h / 2 - 16, c.name, {
         fontFamily: 'monospace',
-        fontSize: '26px',
+        fontSize: '18px',
         fontStyle: 'bold',
         color: '#ffffff'
       })
       .setOrigin(0.5)
-      .setLetterSpacing(2);
+      .setLetterSpacing(1)
+      .setDepth(6);
 
     const badgeP1 = this.add
-      .text(cx - 6, cy - h / 2 - 18, 'P1', {
+      .text(cx - 4, cy - h / 2 - 14, 'P1', {
         fontFamily: 'monospace',
-        fontSize: '26px',
+        fontSize: '20px',
         fontStyle: 'bold',
         color: '#00e5ff'
       })
       .setOrigin(0.5)
-      .setVisible(false);
+      .setVisible(false)
+      .setDepth(6);
 
     const badgeP2 = this.add
-      .text(cx + 44, cy - h / 2 - 18, 'P2', {
+      .text(cx + 30, cy - h / 2 - 14, 'P2', {
         fontFamily: 'monospace',
-        fontSize: '26px',
+        fontSize: '20px',
         fontStyle: 'bold',
         color: '#ff2d95'
       })
       .setOrigin(0.5)
-      .setVisible(false);
+      .setVisible(false)
+      .setDepth(6);
 
     return { index: i, cx, cy, w, h, glow, border, name, badgeP1, badgeP2 };
+  }
+
+  showPreview(i) {
+    const c = CHARACTERS[i];
+    this.preview.setTexture(c.sheet);
+    this.preview.setOrigin(0.5, c.originY);
+    this.preview.setScale(this.previewH / c.sourceH);
+    this.preview.setFlipX(c.facesRight !== true);
+    this.preview.play(`${c.key}Idle`);
+    this.previewName.setText(c.name);
   }
 
   refresh() {
@@ -161,11 +349,13 @@ class SelectScene extends Phaser.Scene {
       const isCursor = panel.index === this.cursor;
       const chosen = panel.index === this.p1 || panel.index === this.p2;
       panel.border.setStrokeStyle(isCursor ? 8 : 4, CHARACTERS[panel.index].color);
-      panel.glow.setAlpha(isCursor ? 0.35 : chosen ? 0.2 : 0.1);
+      panel.glow.setAlpha(isCursor ? 0.5 : 0.12);
       panel.name.setColor(chosen ? '#ffe600' : isCursor ? '#ffffff' : '#8892b0');
       panel.badgeP1.setVisible(panel.index === this.p1);
       panel.badgeP2.setVisible(panel.index === this.p2);
     });
+
+    this.showPreview(this.cursor);
 
     if (this.p1 === null) {
       this.prompt.setText('JUGADOR 1: ELIGE TU LUCHADOR').setColor('#00e5ff');
@@ -178,13 +368,25 @@ class SelectScene extends Phaser.Scene {
     const k = this.keys;
     const left = Phaser.Input.Keyboard.JustDown(k.A) || Phaser.Input.Keyboard.JustDown(k.LEFT);
     const right = Phaser.Input.Keyboard.JustDown(k.D) || Phaser.Input.Keyboard.JustDown(k.RIGHT);
+    const up = Phaser.Input.Keyboard.JustDown(k.W) || Phaser.Input.Keyboard.JustDown(k.UP);
+    const down = Phaser.Input.Keyboard.JustDown(k.S) || Phaser.Input.Keyboard.JustDown(k.DOWN);
 
-    if (left && this.cursor > 0) {
-      this.cursor--;
+    const total = CHARACTERS.length;
+
+    if (left) {
+      this.cursor = (this.cursor - 1 + total) % total;
       this.refresh();
     }
-    if (right && this.cursor < CHARACTERS.length - 1) {
-      this.cursor++;
+    if (right) {
+      this.cursor = (this.cursor + 1) % total;
+      this.refresh();
+    }
+    if (up) {
+      this.cursor = (this.cursor - 3 + total) % total;
+      this.refresh();
+    }
+    if (down) {
+      this.cursor = (this.cursor + 3) % total;
       this.refresh();
     }
 
@@ -206,6 +408,15 @@ class SelectScene extends Phaser.Scene {
 
     if (this.p1 !== null && this.p2 !== null) {
       this.scene.start('GameScene', { p1: this.p1, p2: this.p2 });
+    }
+  }
+
+  startMusic() {
+    if (!this.sound.get('bgm')) {
+      this.sound.add('bgm', { loop: true, volume: 0.6 });
+    }
+    if (!this.sound.get('bgm').isPlaying) {
+      this.sound.play('bgm');
     }
   }
 }
