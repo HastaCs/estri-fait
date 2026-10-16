@@ -22,6 +22,9 @@ Juego de pelea 2D **"STRI FAIT — Version Wiber Turbo 2"**, con **Phaser 3.80.1
 Los **tamaños de frame viven en `CHARACTERS`** y deben coincidir con el PNG real:
 - `assets/fondo_sheet.png` — 752x360, 8 frames (generado desde `assets/fondo.gif`); fondo animado, se dibuja cubriendo el canvas (`scale=2`).
 - `assets/jorge/breathe_sheet_HD.png` — 768x1280, 8 frames; idle con **alpha real**, se usa tal cual.
+- `assets/jorge/walk_sheet.png` — 283x477, 8 frames (4x2); generado por `tools/make_jorge_walk.py`. Animaciones `jorgeWalk` (avance) y `jorgeWalkBack` (frames invertidos, retroceso).
+- `assets/jorge/jump_sheet.png` — 265x419, 8 frames (4x2); generado por `tools/make_jorge_jump.py` (frames alineados por los pies; el arco lo da el desplazamiento vertical). Animación `jorgeJump` (una vez).
+- `assets/agustin/jump_sheet.png` — 248x411, 36 frames (6x6); generado por `tools/make_agustin_jump.py` (recorta los 36 personajes de una rejilla con fondo morado y agua, alinea por los pies). Animación `agustinJump`.
 - `assets/dani/dani_idle_sheet.png` — 643x908, 8 frames (4x2); generado por `tools/make_dani.py`.
 - `assets/bea/bea_idle_sheet.png` (330x529) y `assets/merche/merche_idle_sheet.png` (357x525) — 8 frames (4x2); generados por `tools/make_bea_merche.py`.
 - `assets/xavi/xavi_idle_sheet.png` (531x669) y `assets/agustin/agustin_idle_sheet.png` (393x598) — 8 frames (4x2); generados por `tools/make_xavi_agustin.py`.
@@ -41,6 +44,8 @@ Mantener cada spritesheet por debajo de 8192px de ancho (límite de textura GPU)
 - `make_xavi_agustin.py` — `assets/xavi_agustin.jpeg` → recorta Xavi y Agustín y genera sus `*_idle.png`/`*_idle_sheet.png`/`*_face.png` (igual que Bea/Merche; a Xavi le quita además las zonas blancas encerradas).
 - `make_rafa.py` — `assets/rafa/rafa.jpeg` → recorta el personaje de arriba a la izquierda (imagen con 4) y genera sus `*_idle.png`/`*_idle_sheet.png`/`*_face.png`.
 - `make_faces.py` — recorta las caras de Jorge y Dani para la selección.
+- `make_jorge_walk.py` — `assets/jorge/caminando.jpeg` → `assets/jorge/walk_sheet.png` (frames alineados por los pies).
+- `make_jorge_jump.py` — `assets/jorge/saltando.jpeg` → `assets/jorge/jump_sheet.png` (conserva la posición vertical del arco).
 - `make_sprites.py` y `cutout.py` — **obsoletos**: sus rutas `SRC` hardcodeadas ya no existen. No ejecutar a ciegas.
 - `fondo_sheet.png` se generó ad-hoc (frames del GIF → tira horizontal); no hay script que lo reproduzca.
 
