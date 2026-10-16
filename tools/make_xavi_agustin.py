@@ -99,6 +99,39 @@ def remove_shadow(rgba):
                 px[x, y] = (r, g, b, 0)
 
 
+def remove_white_regions(rgba, min_area=60):
+    w, h = rgba.size
+    px = rgba.load()
+
+    def is_white(x, y):
+        r, g, b, a = px[x, y]
+        return a > 128 and (max(r, g, b) - min(r, g, b)) <= 20 and (r + g + b) / 3 >= 225
+
+    seen = bytearray(w * h)
+    for y in range(h):
+        for x in range(w):
+            i = y * w + x
+            if seen[i] or not is_white(x, y):
+                continue
+            queue = deque([i])
+            seen[i] = 1
+            pixels = []
+            while queue:
+                j = queue.popleft()
+                pixels.append(j)
+                jx, jy = j % w, j // w
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = jx + dx, jy + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        k = ny * w + nx
+                        if not seen[k] and is_white(nx, ny):
+                            seen[k] = 1
+                            queue.append(k)
+            if len(pixels) >= min_area:
+                for j in pixels:
+                    px[j % w, j // w] = (255, 255, 255, 0)
+
+
 def cutout(img, pixels, w, h):
     char = bytearray(w * h)
     for j in pixels:
@@ -158,6 +191,8 @@ def main():
     names = ["xavi", "agustin"]
     for name, pixels in zip(names, comps[:2]):
         static = cutout(img, pixels, w, h)
+        if name == "xavi":
+            remove_white_regions(static)
         base = BASE / "assets" / name
         base.mkdir(parents=True, exist_ok=True)
         static.save(base / f"{name}_idle.png")
