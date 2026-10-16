@@ -56,11 +56,11 @@ class SelectScene extends Phaser.Scene {
       .setLetterSpacing(3)
       .setDepth(6);
 
-    const cols = [640, 870, 1100];
+    const cols = [585, 785, 985, 1185];
     const rows = [270, 450];
     this.panels = CHARACTERS.map((c, i) => {
-      const cx = cols[i % 3];
-      const cy = rows[Math.floor(i / 3)];
+      const cx = cols[i % 4];
+      const cy = rows[Math.floor(i / 4)];
       return this.createPanel(cx, cy, c, i);
     });
 
@@ -382,11 +382,11 @@ class SelectScene extends Phaser.Scene {
       this.refresh();
     }
     if (up) {
-      this.cursor = (this.cursor - 3 + total) % total;
+      this.cursor = (this.cursor - 4 + total) % total;
       this.refresh();
     }
     if (down) {
-      this.cursor = (this.cursor + 3) % total;
+      this.cursor = (this.cursor + 4) % total;
       this.refresh();
     }
 

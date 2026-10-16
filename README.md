@@ -47,6 +47,7 @@ http://localhost:8000
 | Merche | `merche` |
 | Xavi | `xavi` |
 | Agustín | `agustin` |
+| Rafa | `rafa` |
 
 ## Estructura
 

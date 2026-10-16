@@ -76,6 +76,19 @@ const CHARACTERS = [
     sourceH: 518,
     facesRight: false,
     color: 0xffd166
+  },
+  {
+    key: 'rafa',
+    name: 'RAFA',
+    face: 'rafaFace',
+    sheet: 'rafaSheet',
+    sheetPath: 'assets/rafa/rafa_idle_sheet.png',
+    frameW: 371,
+    frameH: 450,
+    originY: 0.9111,
+    sourceH: 370,
+    facesRight: true,
+    color: 0xff4d4d
   }
 ];
 
