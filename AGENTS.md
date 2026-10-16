@@ -1,0 +1,41 @@
+# AGENTS.md
+
+Juego de pelea 2D **"ESTRI FAIT"**, con **Phaser 3.80.1 por CDN y JS sin build**. Dos escenas. Contenido, nombres y comentarios en español.
+
+## Ejecutar / verificar
+- No hay npm, build, lint ni tests. **No crear `package.json`** ni instalar dependencias.
+- Servir estático desde la raíz: `python3 -m http.server 8000` → `http://localhost:8000`.
+  Abrir `index.html` con `file://` falla: el navegador bloquea la carga de imágenes (CORS).
+- Única verificación automática: `node --check js/characters.js js/main.js js/scenes/GameScene.js js/scenes/SelectScene.js`.
+
+## Estructura / arranque
+- `index.html` carga **en orden**: Phaser (CDN) → `js/characters.js` → `js/scenes/GameScene.js` → `js/scenes/SelectScene.js` → `js/main.js`. El orden importa. No hay módulos: las clases y `CHARACTERS` son globales.
+- Escenas en `js/main.js` (`scene: [SelectScene, GameScene]`): **`SelectScene`** (elegir 2 de 4 luchadores) → **`GameScene`** (combate, recibe `{p1, p2}` = índices de `CHARACTERS`).
+- Canvas fijo 1280x720 con `Phaser.Scale.FIT`.
+
+## Personajes (`js/characters.js`)
+`CHARACTERS` es la fuente de verdad (jorge, dani, bea, merche). Por personaje: `face`, `sheet` (texture key), `sheetPath`, `frameW/frameH`, `originY` (base de los pies), `sourceH` (alto del personaje en píxeles, para escalar), `facesRight`, `color`. `GameScene` carga todos los sheets y escala cada uno a `FIGHTER_TARGET_H` (`scale = FIGHTER_TARGET_H / sourceH`).
+- Regla de orientación (en `GameScene.addFighter`): el de la **izquierda mira a la derecha** y el de la **derecha a la izquierda**; `flipX = facesRight !== mustFaceRight`.
+- Al añadir un personaje: crea su sheet + cara, añade una entrada a `CHARACTERS`; no hardcodees tamaños en las escenas.
+
+## Assets y spritesheets (lo más fácil de romper)
+Los **tamaños de frame viven en `CHARACTERS`** y deben coincidir con el PNG real:
+- `assets/fondo_sheet.png` — 752x360, 8 frames (generado desde `assets/fondo.gif`); fondo animado, se dibuja cubriendo el canvas (`scale=2`).
+- `assets/jorge/breathe_sheet_HD.png` — 768x1280, 8 frames; idle con **alpha real**, se usa tal cual.
+- `assets/dani/dani_idle_sheet.png` — 643x908, 8 frames (4x2); generado por `tools/make_dani.py`.
+- `assets/bea/bea_idle_sheet.png` (367x543) y `assets/merche/merche_idle_sheet.png` (364x531) — 8 frames (4x2); generados por `tools/make_bea_merche.py`. Cada personaje tiene también `<key>_face.png` para la selección.
+
+`groundY`, `p1X` y `p2X` son constantes manuales en `GameScene.create`. Los `origin` son fracciones atadas a la base de los pies de cada sheet; al cambiar un sheet hay que recalcular `originY`/`sourceH`.
+
+El arte de origen llega a menudo como **JPEG con "transparencia falsa"** (fondo de cuadros o color sólido incrustado). Se elimina con flood-fill desde los bordes sobre píxeles claros y de bajo croma (ver `tools/`). Los PNG con alpha real no se procesan. Las sombras grises bajo los pies se quitan por color (gris medio sin croma).
+
+Mantener cada spritesheet por debajo de 8192px de ancho (límite de textura GPU): usar rejillas (4x2, 5x3), no tiras largas.
+
+## tools/ (generadores Pillow, ejecución manual)
+- `make_dani.py` — `assets/dani/dani.jpeg` → `dani_idle.png`, `dani_idle_sheet.png` (respiración por rotación suave).
+- `make_bea_merche.py` — `assets/bea_merche.jpeg` → recorta Bea y Merche, quita sombras y genera sus `*_idle.png`/`*_idle_sheet.png` (respiración por estiramiento vertical anclado a los pies) y `*_face.png`.
+- `make_faces.py` — recorta las caras de Jorge y Dani para la selección.
+- `make_sprites.py` y `cutout.py` — **obsoletos**: sus rutas `SRC` hardcodeadas ya no existen. No ejecutar a ciegas.
+- `fondo_sheet.png` se generó ad-hoc (frames del GIF → tira horizontal); no hay script que lo reproduzca.
+
+El usuario intercambia y borra ficheros de `assets/` a mano. Si un asset que antes funcionaba da 404, puede estar en la papelera: `/media/jorge/datos/.Trash-1000/files` o `~/.local/share/Trash/files`.
