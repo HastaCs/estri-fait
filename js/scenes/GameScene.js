@@ -8,9 +8,6 @@ class GameScene extends Phaser.Scene {
       frameWidth: 752,
       frameHeight: 360
     });
-    if (!this.cache.audio.exists('bgm')) {
-      this.load.audio('bgm', 'assets/audio/audio1.mp3');
-    }
     CHARACTERS.forEach((c) =>
       this.load.spritesheet(c.sheet, c.sheetPath, {
         frameWidth: c.frameW,
@@ -54,13 +51,6 @@ class GameScene extends Phaser.Scene {
     this.background.setScale(2);
     this.background.setDepth(-1);
     this.background.play('bg');
-
-    if (!this.sound.get('bgm')) {
-      this.sound.add('bgm', { loop: true, volume: 0.6 });
-    }
-    if (!this.sound.get('bgm').isPlaying) {
-      this.sound.play('bgm');
-    }
 
     this.fighter1 = this.addFighter(p1, this.p1X, true);
     this.fighter2 = this.addFighter(p2, this.p2X, false);

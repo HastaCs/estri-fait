@@ -413,7 +413,7 @@ class SelectScene extends Phaser.Scene {
 
   startMusic() {
     if (!this.sound.get('bgm')) {
-      this.sound.add('bgm', { loop: true, volume: 0.6 });
+      this.sound.add('bgm', { loop: true, volume: 0.3 });
     }
     if (!this.sound.get('bgm').isPlaying) {
       this.sound.play('bgm');
