@@ -3,6 +3,8 @@ from pathlib import Path
 
 from PIL import Image
 
+import imgclean
+
 BASE = Path(__file__).resolve().parent.parent
 
 ALPHA_CUT = 64
@@ -12,16 +14,143 @@ PAD = 20
 COLS = 6
 ROWS = 6
 
+WM_COLOR = (124, 48, 238)
+WM_TOL = 90
 
-def clean_alpha(img):
-    w, h = img.size
-    px = img.load()
+DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+def near(p, t, tol):
+    return abs(p[0] - t[0]) + abs(p[1] - t[1]) + abs(p[2] - t[2]) <= tol
+
+
+def is_watermark(r, g, b):
+    if near((r, g, b), WM_COLOR, WM_TOL):
+        return True
+    return b >= 88 and (b - r) >= 20 and r >= g and (b - g) >= 32
+
+
+def build_watermark_mask(data, w, h):
+    n = w * h
+    wm = bytearray(n)
+    for i in range(n):
+        d = data[i]
+        if d[3] > 0 and is_watermark(d[0], d[1], d[2]):
+            wm[i] = 1
+    dilated = bytearray(wm)
     for y in range(h):
+        base = y * w
         for x in range(w):
-            r, g, b, a = px[x, y]
-            if a < ALPHA_CUT:
-                px[x, y] = (0, 0, 0, 0)
-    return img
+            i = base + x
+            if not wm[i]:
+                continue
+            if x > 0 and data[i - 1][3] > 0:
+                dilated[i - 1] = 1
+            if x < w - 1 and data[i + 1][3] > 0:
+                dilated[i + 1] = 1
+            if y > 0 and data[i - w][3] > 0:
+                dilated[i - w] = 1
+            if y < h - 1 and data[i + w][3] > 0:
+                dilated[i + w] = 1
+    return dilated
+
+
+def opaque_components(data, w, h):
+    n = w * h
+    opaque = bytearray(n)
+    for i in range(n):
+        if data[i][3] > 0:
+            opaque[i] = 1
+    seen = bytearray(n)
+    char = bytearray(n)
+    for i in range(n):
+        if opaque[i] and not seen[i]:
+            q = deque([i])
+            seen[i] = 1
+            comp = []
+            while q:
+                j = q.popleft()
+                comp.append(j)
+                x, y = j % w, j // w
+                for dx, dy in DIRS:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h:
+                        k = ny * w + nx
+                        if opaque[k] and not seen[k]:
+                            seen[k] = 1
+                            q.append(k)
+            if len(comp) >= MIN_COMPONENT:
+                for j in comp:
+                    char[j] = 1
+    return char
+
+
+def clean_watermark(img):
+    w, h = img.size
+    n = w * h
+    data = list(img.getdata())
+
+    for i in range(n):
+        if data[i][3] < ALPHA_CUT:
+            data[i] = (0, 0, 0, 0)
+
+    wm = build_watermark_mask(data, w, h)
+    char = opaque_components(data, w, h)
+
+    for i in range(n):
+        if wm[i] and not char[i]:
+            data[i] = (0, 0, 0, 0)
+
+    known = bytearray(n)
+    fill = bytearray(n)
+    for i in range(n):
+        if char[i]:
+            if wm[i]:
+                fill[i] = 1
+            else:
+                known[i] = 1
+
+    queued = bytearray(n)
+    order = deque()
+    for i in range(n):
+        if not fill[i]:
+            continue
+        x, y = i % w, i // w
+        for dx, dy in DIRS:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h and known[ny * w + nx]:
+                order.append(i)
+                queued[i] = 1
+                break
+
+    while order:
+        i = order.popleft()
+        x, y = i % w, i // w
+        rs = gs = bs = cnt = 0
+        for dx, dy in DIRS:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                k = ny * w + nx
+                if known[k]:
+                    d = data[k]
+                    rs += d[0]
+                    gs += d[1]
+                    bs += d[2]
+                    cnt += 1
+        if cnt:
+            data[i] = (rs // cnt, gs // cnt, bs // cnt, 255)
+        known[i] = 1
+        for dx, dy in DIRS:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                k = ny * w + nx
+                if fill[k] and not known[k] and not queued[k]:
+                    queued[k] = 1
+                    order.append(k)
+
+    cleaned = Image.new("RGBA", (w, h))
+    cleaned.putdata(data)
+    return cleaned
 
 
 def components(img):
@@ -49,7 +178,7 @@ def components(img):
                 maxx = max(maxx, x)
                 miny = min(miny, y)
                 maxy = max(maxy, y)
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                for dx, dy in DIRS:
                     nx, ny = x + dx, y + dy
                     if 0 <= nx < w and 0 <= ny < h and mask[ny * w + nx] and not seen[ny * w + nx]:
                         seen[ny * w + nx] = 1
@@ -59,9 +188,12 @@ def components(img):
     return comps
 
 
-def process(src, out):
-    img = clean_alpha(Image.open(src).convert("RGBA"))
+def process(src, out, clean_out=None):
+    img = clean_watermark(Image.open(src).convert("RGBA"))
     w, h = img.size
+    if clean_out:
+        img.save(clean_out)
+
     pitch_x = w // COLS
     pitch_y = h // ROWS
 
@@ -94,6 +226,7 @@ def process(src, out):
         sheet.paste(piece, (x, y), piece)
 
     out.parent.mkdir(parents=True, exist_ok=True)
+    sheet = imgclean.clean(sheet)
     sheet.save(out)
     print(
         f"guardado {out} sheet={sheet.size} frame={fw}x{fh} "

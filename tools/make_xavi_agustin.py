@@ -4,6 +4,8 @@ from pathlib import Path
 
 from PIL import Image, ImageFilter
 
+import imgclean
+
 BASE = Path(__file__).resolve().parent.parent
 SRC = BASE / "assets" / "xavi_agustin.jpeg"
 
@@ -145,7 +147,8 @@ def cutout(img, pixels, w, h):
     out = img.convert("RGBA")
     out.putalpha(alpha)
     remove_shadow(out)
-    return out.crop(out.getchannel("A").getbbox())
+    out = out.crop(out.getchannel("A").getbbox())
+    return imgclean.clean(out)
 
 
 def make_idle_sheet(static_img, out_sheet):
@@ -164,6 +167,7 @@ def make_idle_sheet(static_img, out_sheet):
         row = i // SHEET_COLS
         sheet.paste(frame, (col * cw + PAD, row * ch + baseline - nh), frame)
     out_sheet.parent.mkdir(parents=True, exist_ok=True)
+    sheet = imgclean.clean(sheet)
     sheet.save(out_sheet)
     print(
         f"guardado {out_sheet} sheet={sheet.size} frame={cw}x{ch} "

@@ -94,7 +94,7 @@ const CHARACTERS = [
     jumpSheetPath: 'assets/agustin/jump_sheet.png',
     jumpFrameW: 248,
     jumpFrameH: 496,
-    jumpOriginY: 0.8286,
+    jumpOriginY: 0.8306,
     jumpSourceH: 330,
     jumpFrames: 36,
     punchSheet: 'agustinPunch',
