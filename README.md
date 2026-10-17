@@ -10,6 +10,7 @@ Este proyecto ha sido creado **100% con vibe coding**, usando:
 
 - **[opencode](https://opencode.ai)** + **DeepSeek** para el código.
 - **Gemini** para generar las imágenes de los personajes.
+- **[ludo.ai](https://ludo.ai)** para las animaciones.
 - **Suno** para el audio / la música de fondo.
 
 ## Cómo cargarlo y probarlo

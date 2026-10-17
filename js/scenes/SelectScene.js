@@ -34,8 +34,11 @@ class SelectScene extends Phaser.Scene {
       if (!this.anims.exists(key)) {
         this.anims.create({
           key,
-          frames: this.anims.generateFrameNumbers(c.sheet, { start: 0, end: 7 }),
-          frameRate: 6,
+          frames: this.anims.generateFrameNumbers(c.sheet, {
+            start: 0,
+            end: (c.idleFrames || 8) - 1
+          }),
+          frameRate: c.idleFrameRate || 6,
           repeat: -1
         });
       }
@@ -399,16 +402,137 @@ class SelectScene extends Phaser.Scene {
   }
 
   confirm() {
+    let label;
+    let color;
     if (this.p1 === null) {
       this.p1 = this.cursor;
+      label = 'P1';
+      color = 0x00e5ff;
     } else if (this.p2 === null) {
       this.p2 = this.cursor;
+      label = 'P2';
+      color = 0xff2d95;
+    } else {
+      return;
     }
+
     this.refresh();
+    this.celebrate(this.panels[this.cursor], label, color);
 
     if (this.p1 !== null && this.p2 !== null) {
-      this.scene.start('GameScene', { p1: this.p1, p2: this.p2 });
+      this.time.delayedCall(950, () => {
+        this.scene.start('BackgroundScene', { p1: this.p1, p2: this.p2 });
+      });
     }
+  }
+
+  celebrate(panel, label, color) {
+    const cx = panel.cx;
+    const cy = panel.cy;
+    const hex = `#${color.toString(16).padStart(6, '0')}`;
+
+    this.cameras.main.flash(160, 255, 255, 255);
+    this.cameras.main.shake(220, 0.005);
+
+    const ring = this.add.circle(cx, cy, 40).setStrokeStyle(6, color).setDepth(15);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: ring,
+      scale: 6.5,
+      alpha: { from: 1, to: 0 },
+      duration: 650,
+      ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    const rays = 18;
+    for (let i = 0; i < rays; i++) {
+      const ang = (i / rays) * Math.PI * 2;
+      const len = 230 + (i % 2) * 70;
+      const ray = this.add
+        .rectangle(cx, cy, 9, len, i % 2 ? color : 0xffffff, 0.9)
+        .setOrigin(0.5)
+        .setDepth(15)
+        .setBlendMode(Phaser.BlendModes.ADD);
+      ray.setRotation(ang);
+      ray.x = cx + Math.cos(ang) * (len / 2);
+      ray.y = cy + Math.sin(ang) * (len / 2);
+      ray.setScale(0.15, 0.15);
+      this.tweens.add({
+        targets: ray,
+        scaleX: 1,
+        scaleY: 1,
+        alpha: 0,
+        duration: 700,
+        ease: 'Quad.easeOut',
+        onComplete: () => ray.destroy()
+      });
+    }
+
+    const confettiColors = [0xff2d95, 0x00e5ff, 0xffe600, 0x7a2bff, 0xffffff];
+    for (let i = 0; i < 54; i++) {
+      const c = confettiColors[i % confettiColors.length];
+      const p = this.add
+        .rectangle(cx, cy, 8 + Math.random() * 8, 6 + Math.random() * 8, c)
+        .setDepth(16);
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 130 + Math.random() * 300;
+      this.tweens.add({
+        targets: p,
+        x: cx + Math.cos(ang) * spd,
+        y: cy + Math.sin(ang) * spd + 170,
+        angle: Math.random() * 720 - 360,
+        alpha: { from: 1, to: 0 },
+        duration: 750 + Math.random() * 550,
+        ease: 'Cubic.easeOut',
+        onComplete: () => p.destroy()
+      });
+    }
+
+    const stamp = this.add
+      .text(cx, cy, label, {
+        fontFamily: 'monospace',
+        fontSize: '92px',
+        fontStyle: 'bold',
+        color: '#ffffff'
+      })
+      .setOrigin(0.5)
+      .setDepth(20)
+      .setLetterSpacing(2);
+    stamp.setStroke(hex, 9);
+    stamp.setScale(0.2);
+    stamp.setAlpha(0);
+    this.tweens.add({
+      targets: stamp,
+      scale: 1.15,
+      alpha: 1,
+      duration: 260,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: stamp,
+          scale: 1,
+          duration: 220,
+          onComplete: () => {
+            this.tweens.add({
+              targets: stamp,
+              alpha: 0,
+              scale: 1.4,
+              duration: 320,
+              delay: 150,
+              onComplete: () => stamp.destroy()
+            });
+          }
+        });
+      }
+    });
+
+    panel.glow.setAlpha(0.7);
+    this.tweens.add({
+      targets: panel.glow,
+      alpha: 0.12,
+      duration: 700
+    });
   }
 
   startMusic() {

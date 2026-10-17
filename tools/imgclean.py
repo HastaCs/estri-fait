@@ -8,7 +8,13 @@ ALPHA_OPAQUE = 128
 
 def _is_light(d):
     r, g, b, a = d
-    return (r + g + b) / 3 >= 185 and (max(r, g, b) - min(r, g, b)) <= 35
+    return (r + g + b) / 3 >= 168 and (max(r, g, b) - min(r, g, b)) <= 48
+
+
+def erode_alpha(img, px=1):
+    alpha = img.getchannel("A").filter(ImageFilter.MinFilter(px * 2 + 1))
+    img.putalpha(alpha)
+    return img
 
 
 def fill_holes(img):
@@ -200,7 +206,10 @@ def smooth_alpha(img, radius=0.6):
 
 
 def clean(img):
-    return smooth_alpha(bleed_colors(defringe(fill_holes(img), rounds=4)))
+    return smooth_alpha(
+        bleed_colors(defringe(erode_alpha(fill_holes(img), 2), rounds=8)),
+        radius=0.35
+    )
 
 
 def main():

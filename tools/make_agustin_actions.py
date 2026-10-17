@@ -27,7 +27,9 @@ def near(p, t, tol):
 def is_watermark(r, g, b):
     if near((r, g, b), WM_COLOR, WM_TOL):
         return True
-    return b >= 88 and (b - r) >= 20 and r >= g and (b - g) >= 32
+    if b >= 88 and (b - r) >= 20 and r >= g and (b - g) >= 32:
+        return True
+    return b > g + 10 and b >= 120 and -10 <= (r - g) <= 28
 
 
 def build_watermark_mask(data, w, h):
@@ -238,6 +240,7 @@ def main():
     base = BASE / "assets" / "agustin"
     process(base / "saltando.png", base / "jump_sheet.png")
     process(base / "puño.png", base / "punch_sheet.png")
+    process(base / "vacilar.png", base / "taunt_sheet.png")
 
 
 if __name__ == "__main__":

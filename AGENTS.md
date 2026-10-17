@@ -16,6 +16,8 @@ Juego de pelea 2D **"STRI FAIT — Version Wiber Turbo 2"**, con **Phaser 3.80.1
 ## Personajes (`js/characters.js`)
 `CHARACTERS` es la fuente de verdad (jorge, dani, bea, merche, xavi, agustin, rafa). Por personaje: `face`, `sheet` (texture key), `sheetPath`, `frameW/frameH`, `originY` (base de los pies), `sourceH` (alto del personaje en píxeles, para escalar), `facesRight`, `color`. `GameScene` carga todos los sheets y escala cada uno a `FIGHTER_TARGET_H` (`scale = FIGHTER_TARGET_H / sourceH`).
 - Regla de orientación (en `GameScene.addFighter`): el de la **izquierda mira a la derecha** y el de la **derecha a la izquierda**; `flipX = facesRight !== mustFaceRight`.
+- Habilidades por flag en el personaje (las ejecuta el luchador que las tenga, en cualquier lado): `walkSheet`/`jumpSheet` → **A/D/Espacio**; `punchSheet` → **F**; `tauntSheet` → **Q**; `kamehameha: true` → **T** (kamehameha procedural: orbe, haz, partículas, rayos, flash y shake); `deathSheet` → **muerte al colisionar** (Rafa; `resolveFighterCollision` detecta AABB y dispara la animación).
+- Combate: barras de vida (100, `FIGHTER_MAX_HP`) arriba; **solo los ataques restan vida** (puño `punchHit` → −20, kamehameha `impactOpponent` → −20). La colisión entre luchadores **solo los separa** (no resta vida). Vida a 0 → muerte si el personaje tiene `deathSheet`.
 - Al añadir un personaje: crea su sheet + cara, añade una entrada a `CHARACTERS`; no hardcodees tamaños en las escenas.
 
 ## Assets y spritesheets (lo más fácil de romper)
@@ -43,7 +45,9 @@ Mantener cada spritesheet por debajo de 8192px de ancho (límite de textura GPU)
 - `make_bea_merche.py` — `assets/bea_merche.jpeg` → recorta Bea y Merche, quita sombras y genera sus `*_idle.png`/`*_idle_sheet.png` (respiración por estiramiento vertical anclado a los pies) y `*_face.png`.
 - `make_xavi_agustin.py` — `assets/xavi_agustin.jpeg` → recorta Xavi y Agustín y genera sus `*_idle.png`/`*_idle_sheet.png`/`*_face.png` (igual que Bea/Merche; a Xavi le quita además las zonas blancas encerradas).
 - `make_rafa.py` — `assets/rafa/rafa.jpeg` → recorta el personaje de arriba a la izquierda (imagen con 4) y genera sus `*_idle.png`/`*_idle_sheet.png`/`*_face.png`.
+- `make_rafa_death.py` — `assets/rafa/muerte.png` (rejilla 6x6) → `assets/rafa/death_sheet.png`; limpia la marca de agua (reusa `make_agustin_actions`) y une componentes por celda.
 - `make_faces.py` — recorta las caras de Jorge y Dani para la selección.
+- `imgclean.py` — helper (usado por los generadores): rellena agujeros interiores de alpha, quita el fleco claro de los bordes, extiende color al alpha 0 y suaviza el contorno.
 - `make_jorge_walk.py` — `assets/jorge/caminando.jpeg` → `assets/jorge/walk_sheet.png` (frames alineados por los pies).
 - `make_jorge_jump.py` — `assets/jorge/saltando.jpeg` → `assets/jorge/jump_sheet.png` (conserva la posición vertical del arco).
 - `make_sprites.py` y `cutout.py` — **obsoletos**: sus rutas `SRC` hardcodeadas ya no existen. No ejecutar a ciegas.
