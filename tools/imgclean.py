@@ -17,6 +17,12 @@ def erode_alpha(img, px=1):
     return img
 
 
+def dilate_alpha(img, px=1):
+    alpha = img.getchannel("A").filter(ImageFilter.MaxFilter(px * 2 + 1))
+    img.putalpha(alpha)
+    return img
+
+
 def fill_holes(img):
     w, h = img.size
     n = w * h
@@ -206,10 +212,13 @@ def smooth_alpha(img, radius=0.6):
 
 
 def clean(img):
-    return smooth_alpha(
-        bleed_colors(defringe(erode_alpha(fill_holes(img), 2), rounds=8)),
-        radius=0.35
-    )
+    img = fill_holes(img)
+    img = erode_alpha(img, 3)
+    img = dilate_alpha(img, 3)
+    img = erode_alpha(img, 2)
+    img = defringe(img, rounds=10)
+    img = bleed_colors(img)
+    return smooth_alpha(img, radius=0.45)
 
 
 def main():

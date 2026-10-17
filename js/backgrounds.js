@@ -13,8 +13,12 @@ const BACKGROUNDS = [
   {
     key: 'bgWiber',
     name: 'WIBER',
-    path: 'assets/backgrounds/wiber.png',
-    sheet: false,
+    path: 'assets/backgrounds/wiber_sheet.png',
+    sheet: true,
+    frameW: 1024,
+    frameH: 683,
+    frames: 5,
+    frameRate: 1000 / 150,
     color: 0xff2d95
   }
 ];

@@ -9,6 +9,7 @@ const JUMP_UP_MS = 350;
 const JUMP_DOWN_MS = 450;
 const BACKFLIP_DURATION_MS = 1100;
 const BACKFLIP_SPEED = 360;
+const JUMP_SPEED = 360;
 const PUNCH_DURATION_MS = 600;
 const TAUNT_DURATION_MS = 1200;
 const DEATH_DURATION_MS = 1500;
@@ -77,11 +78,23 @@ class GameScene extends Phaser.Scene {
           frameHeight: c.specialFrameH
         });
       }
+      if (c.specialSound && !this.cache.audio.exists(c.specialSound)) {
+        this.load.audio(c.specialSound, c.specialSoundPath);
+      }
+      if (c.kneelSheet) {
+        this.load.spritesheet(c.kneelSheet, c.kneelSheetPath, {
+          frameWidth: c.kneelFrameW,
+          frameHeight: c.kneelFrameH
+        });
+      }
       if (c.punchSheet) {
         this.load.spritesheet(c.punchSheet, c.punchSheetPath, {
           frameWidth: c.punchFrameW,
           frameHeight: c.punchFrameH
         });
+      }
+      if (c.punchSound && !this.cache.audio.exists(c.punchSound)) {
+        this.load.audio(c.punchSound, c.punchSoundPath);
       }
       if (c.tauntSheet) {
         this.load.spritesheet(c.tauntSheet, c.tauntSheetPath, {
@@ -186,6 +199,29 @@ class GameScene extends Phaser.Scene {
           repeat: 0
         });
       }
+      if (c.specialSound && !this.sound.get(c.specialSound)) {
+        this.sound.add(c.specialSound, { volume: 0.6 });
+      }
+      if (c.kneelSheet && !this.anims.exists(`${c.key}KneelDown`)) {
+        const down = this.anims.generateFrameNumbers(c.kneelSheet, {
+          start: 0,
+          end: c.kneelHoldFrame
+        });
+        const downMs = c.kneelDownMs || 1000;
+        const upMs = c.kneelUpMs || downMs;
+        this.anims.create({
+          key: `${c.key}KneelDown`,
+          frames: down,
+          frameRate: down.length / (downMs / 1000),
+          repeat: 0
+        });
+        this.anims.create({
+          key: `${c.key}KneelUp`,
+          frames: down.slice().reverse(),
+          frameRate: down.length / (upMs / 1000),
+          repeat: 0
+        });
+      }
       if (c.punchSheet && !this.anims.exists(`${c.key}Punch`)) {
         this.anims.create({
           key: `${c.key}Punch`,
@@ -196,6 +232,9 @@ class GameScene extends Phaser.Scene {
           frameRate: c.punchFrames / (PUNCH_DURATION_MS / 1000),
           repeat: 0
         });
+      }
+      if (c.punchSound && !this.sound.get(c.punchSound)) {
+        this.sound.add(c.punchSound, { volume: 0.5 });
       }
       if (c.tauntSheet && !this.anims.exists(`${c.key}Taunt`)) {
         this.anims.create({
@@ -227,7 +266,12 @@ class GameScene extends Phaser.Scene {
         this.scale.height / 2,
         bgDef.key
       );
-      this.background.setScale(2);
+      this.background.setScale(
+        Math.max(
+          this.scale.width / bgDef.frameW,
+          this.scale.height / bgDef.frameH
+        )
+      );
       this.background.setDepth(-1);
       this.background.play(`${bgDef.key}Bg`);
     } else {
@@ -278,6 +322,12 @@ class GameScene extends Phaser.Scene {
     this.backflipKey = this.walkChar.backflipSheet
       ? `${this.walkChar.key}Backflip`
       : null;
+    this.kneelChar = this.walkChar.kneelSheet ? this.walkChar : null;
+    this.kneeler = this.walker;
+    this.kneeling = false;
+    this.kneelStanding = false;
+    this.kneelDownKey = this.kneelChar ? `${this.kneelChar.key}KneelDown` : null;
+    this.kneelUpKey = this.kneelChar ? `${this.kneelChar.key}KneelUp` : null;
     this.punchKey = this.punchChar ? `${this.punchChar.key}Punch` : null;
     this.tauntKey = this.tauntChar ? `${this.tauntChar.key}Taunt` : null;
 
@@ -302,6 +352,11 @@ class GameScene extends Phaser.Scene {
         this.walker.y = this.groundY;
         this.applyIdle(this.walkChar, this.walker);
       }
+      if (anim.key === this.kneelUpKey && this.kneelStanding) {
+        this.kneelStanding = false;
+        this.kneeling = false;
+        this.applyIdle(this.kneelChar, this.kneeler);
+      }
     });
 
     if (this.puncher) {
@@ -322,7 +377,7 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    this.keys = this.input.keyboard.addKeys('A,D,SPACE,F,T,Q');
+    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,F,T,Q');
 
     this.playIntro();
   }
@@ -648,6 +703,24 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}Backflip`);
   }
 
+  applyKneelDown(c, sprite) {
+    if (sprite.texture.key !== c.kneelSheet) {
+      sprite.setTexture(c.kneelSheet);
+      sprite.setOrigin(0.5, c.kneelOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.kneelSourceH);
+    }
+    sprite.play(`${c.key}KneelDown`);
+  }
+
+  applyKneelUp(c, sprite) {
+    if (sprite.texture.key !== c.kneelSheet) {
+      sprite.setTexture(c.kneelSheet);
+      sprite.setOrigin(0.5, c.kneelOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.kneelSourceH);
+    }
+    sprite.play(`${c.key}KneelUp`);
+  }
+
   applyPunch(c, sprite) {
     if (sprite.texture.key !== c.punchSheet) {
       sprite.setTexture(c.punchSheet);
@@ -655,6 +728,9 @@ class GameScene extends Phaser.Scene {
       sprite.setScale(FIGHTER_TARGET_H / c.punchSourceH);
     }
     sprite.play(`${c.key}Punch`);
+    if (c.punchSound && this.sound.get(c.punchSound)) {
+      this.sound.play(c.punchSound);
+    }
   }
 
   applyTaunt(c, sprite) {
@@ -666,17 +742,34 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}Taunt`);
   }
 
-  playJumpArc(total = JUMP_DURATION_MS) {
+  playJumpArc(total = JUMP_DURATION_MS, opts = {}) {
     const sprite = this.walker;
+    const c = this.walkChar;
     sprite.y = this.groundY;
-    if (this.walkChar.jumpArcInSheet) {
+    const amount =
+      opts.lift != null
+        ? opts.lift
+        : c.jumpLift != null
+        ? c.jumpLift
+        : c.jumpArcInSheet
+        ? 0
+        : JUMP_LIFT;
+    if (amount <= 0) {
       return;
     }
-    const up = total * (JUMP_UP_MS / JUMP_DURATION_MS);
-    const down = total * (JUMP_DOWN_MS / JUMP_DURATION_MS);
+    const peakFrac =
+      opts.peakFrac != null
+        ? opts.peakFrac
+        : c.jumpPeakFrac != null
+        ? c.jumpPeakFrac
+        : JUMP_UP_MS / JUMP_DURATION_MS;
+    const landFrac =
+      opts.landFrac != null ? opts.landFrac : c.jumpLandFrac != null ? c.jumpLandFrac : 1;
+    const up = total * peakFrac;
+    const down = Math.max(1, total * (landFrac - peakFrac));
     this.tweens.add({
       targets: sprite,
-      y: this.groundY - JUMP_LIFT,
+      y: this.groundY - amount,
       duration: up,
       ease: 'Quad.easeOut',
       onComplete: () => {
@@ -726,6 +819,14 @@ class GameScene extends Phaser.Scene {
         sprite.setScale(FIGHTER_TARGET_H / this.kameChar.specialSourceH);
       }
       sprite.play(`${this.kameChar.key}Special`);
+    }
+
+    if (this.kameChar.specialSound && this.sound.get(this.kameChar.specialSound)) {
+      this.kameSfx = this.sound.get(this.kameChar.specialSound);
+      this.kameSfx.play({
+        seek: this.kameChar.specialSoundSeek || 0,
+        rate: this.kameChar.specialSoundRate || 1
+      });
     }
 
     const halo = this.add
@@ -844,6 +945,14 @@ class GameScene extends Phaser.Scene {
         this.kameActive = false;
         this.applyIdle(this.kameChar, this.kamer);
       });
+      this.time.delayedCall(
+        300 + (this.kameChar.specialSoundTailMs || 1200),
+        () => {
+          if (this.kameSfx && this.kameSfx.isPlaying) {
+            this.kameSfx.stop();
+          }
+        }
+      );
     });
   }
 
@@ -888,6 +997,32 @@ class GameScene extends Phaser.Scene {
     const left = this.keys.A.isDown;
     const right = this.keys.D.isDown;
 
+    if (this.kneelChar) {
+      const sDown = this.keys.S.isDown;
+      if (
+        sDown &&
+        !this.kneeling &&
+        !this.kneelStanding &&
+        !this.jumping &&
+        !this.punching &&
+        !this.taunting
+      ) {
+        this.kneeling = true;
+        this.walkerMoving = false;
+        this.applyKneelDown(this.kneelChar, this.kneeler);
+      }
+      if (this.kneeling) {
+        if (!sDown && !this.kneelStanding) {
+          this.kneelStanding = true;
+          this.applyKneelUp(this.kneelChar, this.kneeler);
+        }
+        return;
+      }
+      if (this.kneelStanding) {
+        return;
+      }
+    }
+
     if (this.jumping) {
       if (this.backflipActive) {
         this.walker.x = Phaser.Math.Clamp(
@@ -898,7 +1033,7 @@ class GameScene extends Phaser.Scene {
       } else if (left || right) {
         const dir = right ? 1 : -1;
         this.walker.x = Phaser.Math.Clamp(
-          this.walker.x + dir * WALK_SPEED * dt,
+          this.walker.x + dir * JUMP_SPEED * dt,
           WALK_MIN_X,
           WALK_MAX_X
         );
@@ -916,7 +1051,17 @@ class GameScene extends Phaser.Scene {
         this.backflipDir = right ? 1 : -1;
         this.walkerMoving = false;
         this.applyBackflip(this.walkChar, this.walker);
-        this.playJumpArc(BACKFLIP_DURATION_MS);
+        this.playJumpArc(BACKFLIP_DURATION_MS, {
+          lift: this.walkChar.backflipLift,
+          peakFrac: this.walkChar.backflipPeakFrac,
+          landFrac: this.walkChar.backflipLandFrac
+        });
+        this.time.delayedCall(
+          BACKFLIP_DURATION_MS * (this.walkChar.backflipLandFrac || 0.639),
+          () => {
+            this.backflipActive = false;
+          }
+        );
         return;
       }
 
