@@ -11,6 +11,8 @@ const BACKFLIP_DURATION_MS = 1100;
 const BACKFLIP_SPEED = 360;
 const JUMP_SPEED = 360;
 const PUNCH_DURATION_MS = 600;
+const KICK_DURATION_MS = 800;
+const KICK_HIT_MS = 300;
 const TAUNT_DURATION_MS = 1200;
 const DEATH_DURATION_MS = 1500;
 const FIGHTER_MAX_HP = 100;
@@ -85,6 +87,12 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet(c.kneelSheet, c.kneelSheetPath, {
           frameWidth: c.kneelFrameW,
           frameHeight: c.kneelFrameH
+        });
+      }
+      if (c.kickSheet) {
+        this.load.spritesheet(c.kickSheet, c.kickSheetPath, {
+          frameWidth: c.kickFrameW,
+          frameHeight: c.kickFrameH
         });
       }
       if (c.punchSheet) {
@@ -222,6 +230,17 @@ class GameScene extends Phaser.Scene {
           repeat: 0
         });
       }
+      if (c.kickSheet && !this.anims.exists(`${c.key}Kick`)) {
+        this.anims.create({
+          key: `${c.key}Kick`,
+          frames: this.anims.generateFrameNumbers(c.kickSheet, {
+            start: 0,
+            end: c.kickFrames - 1
+          }),
+          frameRate: c.kickFrames / (KICK_DURATION_MS / 1000),
+          repeat: 0
+        });
+      }
       if (c.punchSheet && !this.anims.exists(`${c.key}Punch`)) {
         this.anims.create({
           key: `${c.key}Punch`,
@@ -254,7 +273,7 @@ class GameScene extends Phaser.Scene {
             start: 0,
             end: c.deathFrames - 1
           }),
-          frameRate: c.deathFrames / (DEATH_DURATION_MS / 1000),
+          frameRate: c.deathFrames / ((c.deathMs || DEATH_DURATION_MS) / 1000),
           repeat: 0
         });
       }
@@ -328,6 +347,10 @@ class GameScene extends Phaser.Scene {
     this.kneelStanding = false;
     this.kneelDownKey = this.kneelChar ? `${this.kneelChar.key}KneelDown` : null;
     this.kneelUpKey = this.kneelChar ? `${this.kneelChar.key}KneelUp` : null;
+    this.kickChar = this.walkChar.kickSheet ? this.walkChar : null;
+    this.kicker = this.walker;
+    this.kicking = false;
+    this.kickKey = this.kickChar ? `${this.kickChar.key}Kick` : null;
     this.punchKey = this.punchChar ? `${this.punchChar.key}Punch` : null;
     this.tauntKey = this.tauntChar ? `${this.tauntChar.key}Taunt` : null;
 
@@ -356,6 +379,14 @@ class GameScene extends Phaser.Scene {
         this.kneelStanding = false;
         this.kneeling = false;
         this.applyIdle(this.kneelChar, this.kneeler);
+      }
+      if (anim.key === this.kickKey && this.kicking) {
+        this.kicking = false;
+        this.jumping = false;
+        this.backflipActive = false;
+        this.tweens.killTweensOf(this.walker);
+        this.walker.y = this.groundY;
+        this.applyIdle(this.kickChar, this.kicker);
       }
     });
 
@@ -411,9 +442,6 @@ class GameScene extends Phaser.Scene {
     this.fightersColliding = Phaser.Geom.Intersects.RectangleToRectangle(a, b);
     if (!this.fightersColliding) {
       return;
-    }
-    if (this.deather) {
-      this.triggerDeath();
     }
     const overlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
     const dir = this.fighter1.x <= this.fighter2.x ? 1 : -1;
@@ -538,8 +566,16 @@ class GameScene extends Phaser.Scene {
     this.controlsEnabled = false;
     const winner = this.opponentOf(loser);
     const winnerChar = winner === this.fighter1 ? this.p1Char : this.p2Char;
-    const delay = loser === this.deather ? DEATH_DURATION_MS : 500;
-    this.time.delayedCall(delay, () => this.showWin(winnerChar));
+    const loserChar = loser === this.fighter1 ? this.p1Char : this.p2Char;
+    const delay = loser === this.deather ? loser.deathMs || DEATH_DURATION_MS : 500;
+    this.time.delayedCall(delay, () => {
+      this.showWin(winnerChar);
+      if (loserChar.key === 'rafa') {
+        this.time.delayedCall(2600, () => {
+          this.scene.start('DefeatScene', { winner: winnerChar.name });
+        });
+      }
+    });
   }
 
   showWin(winnerChar) {
@@ -662,6 +698,15 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  kickHit(kicker) {
+    const opp = this.opponentOf(kicker);
+    const dir = kicker.mustFaceRight ? 1 : -1;
+    const dx = opp.x - kicker.x;
+    if (dx * dir > 0 && Math.abs(dx) <= PUNCH_REACH) {
+      this.damageFighter(opp, PUNCH_DAMAGE);
+    }
+  }
+
   applyIdle(c, sprite) {
     if (sprite.texture.key !== c.sheet) {
       sprite.setTexture(c.sheet);
@@ -719,6 +764,15 @@ class GameScene extends Phaser.Scene {
       sprite.setScale(FIGHTER_TARGET_H / c.kneelSourceH);
     }
     sprite.play(`${c.key}KneelUp`);
+  }
+
+  applyKick(c, sprite) {
+    if (sprite.texture.key !== c.kickSheet) {
+      sprite.setTexture(c.kickSheet);
+      sprite.setOrigin(0.5, c.kickOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.kickSourceH);
+    }
+    sprite.play(`${c.key}Kick`);
   }
 
   applyPunch(c, sprite) {
@@ -806,6 +860,8 @@ class GameScene extends Phaser.Scene {
   playKamehameha() {
     this.kameActive = true;
     this.walkerMoving = false;
+    this.punching = false;
+    this.taunting = false;
 
     const sprite = this.kamer;
     const dir = sprite.mustFaceRight ? 1 : -1;
@@ -819,14 +875,6 @@ class GameScene extends Phaser.Scene {
         sprite.setScale(FIGHTER_TARGET_H / this.kameChar.specialSourceH);
       }
       sprite.play(`${this.kameChar.key}Special`);
-    }
-
-    if (this.kameChar.specialSound && this.sound.get(this.kameChar.specialSound)) {
-      this.kameSfx = this.sound.get(this.kameChar.specialSound);
-      this.kameSfx.play({
-        seek: this.kameChar.specialSoundSeek || 0,
-        rate: this.kameChar.specialSoundRate || 1
-      });
     }
 
     const halo = this.add
@@ -870,6 +918,18 @@ class GameScene extends Phaser.Scene {
       chargeEmitter.destroy();
       this.fireKamehameha(handX, handY, dir, halo, orb, rays);
     });
+
+    try {
+      if (this.kameChar.specialSound && this.sound.get(this.kameChar.specialSound)) {
+        this.kameSfx = this.sound.get(this.kameChar.specialSound);
+        this.kameSfx.play({
+          seek: this.kameChar.specialSoundSeek || 0,
+          rate: this.kameChar.specialSoundRate || 1
+        });
+      }
+    } catch (e) {
+      this.kameSfx = null;
+    }
   }
 
   fireKamehameha(handX, handY, dir, halo, orb, rays) {
@@ -1038,6 +1098,18 @@ class GameScene extends Phaser.Scene {
           WALK_MAX_X
         );
       }
+      if (this.kickChar && !this.kicking && Phaser.Input.Keyboard.JustDown(this.keys.F)) {
+        this.kicking = true;
+        this.tweens.killTweensOf(this.walker);
+        this.tweens.add({
+          targets: this.walker,
+          y: this.groundY,
+          duration: KICK_DURATION_MS,
+          ease: 'Sine.easeIn'
+        });
+        this.applyKick(this.kickChar, this.kicker);
+        this.time.delayedCall(KICK_HIT_MS, () => this.kickHit(this.kicker));
+      }
       return;
     }
 
@@ -1046,6 +1118,8 @@ class GameScene extends Phaser.Scene {
       const goingBack = (facingRight && left) || (!facingRight && right);
 
       if (this.walkChar.backflipSheet && goingBack) {
+        this.punching = false;
+        this.taunting = false;
         this.jumping = true;
         this.backflipActive = true;
         this.backflipDir = right ? 1 : -1;
@@ -1066,6 +1140,8 @@ class GameScene extends Phaser.Scene {
       }
 
       if (this.walkChar.jumpSheet) {
+        this.punching = false;
+        this.taunting = false;
         this.jumping = true;
         this.backflipActive = false;
         this.walkerMoving = false;

@@ -28,6 +28,7 @@ JOBS = [
     ("backflip.mp4", "backflip_sheet.png"),
     ("especial.mp4", "special_sheet.png"),
     ("arrodillarse.mp4", "kneel_sheet.png"),
+    ("patada.mp4", "kick_sheet.png"),
 ]
 
 

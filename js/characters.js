@@ -118,7 +118,7 @@ const CHARACTERS = [
     backflipOriginY: 0.9567,
     backflipSourceH: 320,
     backflipFrames: 36,
-    backflipLift: 92,
+    backflipLift: 155,
     backflipPeakFrac: 0.417,
     backflipLandFrac: 0.639,
     specialSheet: 'agustinSpecial',
@@ -160,10 +160,10 @@ const CHARACTERS = [
     tauntFrames: 36,
     kickSheet: 'agustinKick',
     kickSheetPath: 'assets/agustin/kick_sheet.png',
-    kickFrameW: 496,
-    kickFrameH: 581,
-    kickOriginY: 0.9656,
-    kickSourceH: 485,
+    kickFrameW: 460,
+    kickFrameH: 598,
+    kickOriginY: 0.9666,
+    kickSourceH: 487,
     kickFrames: 36,
     kamehameha: true
   },
@@ -182,10 +182,11 @@ const CHARACTERS = [
     deathSheet: 'rafaDeath',
     deathSheetPath: 'assets/rafa/death_sheet.png',
     deathFrameW: 538,
-    deathFrameH: 726,
-    deathOriginY: 0.9711,
-    deathSourceH: 451,
-    deathFrames: 36
+    deathFrameH: 548,
+    deathOriginY: 0.9635,
+    deathSourceH: 484,
+    deathFrames: 36,
+    deathMs: 2200
   }
 ];
 
