@@ -90,6 +90,7 @@ const CHARACTERS = [
     sourceH: 325,
     idleFrames: 36,
     idleFrameRate: 20,
+    idlePingPong: true,
     facesRight: false,
     color: 0xffd166,
     walkSheet: 'agustinWalk',
@@ -191,3 +192,14 @@ const CHARACTERS = [
 ];
 
 const FIGHTER_TARGET_H = 300;
+
+function buildIdleFrames(anims, c) {
+  const idleCount = c.idleFrames || 8;
+  if (!c.idlePingPong) {
+    return anims.generateFrameNumbers(c.sheet, { start: 0, end: idleCount - 1 });
+  }
+  const seq = [];
+  for (let i = 0; i < idleCount; i++) seq.push(i);
+  for (let i = idleCount - 2; i >= 1; i--) seq.push(i);
+  return seq.map((f) => ({ key: c.sheet, frame: f }));
+}

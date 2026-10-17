@@ -34,10 +34,7 @@ class SelectScene extends Phaser.Scene {
       if (!this.anims.exists(key)) {
         this.anims.create({
           key,
-          frames: this.anims.generateFrameNumbers(c.sheet, {
-            start: 0,
-            end: (c.idleFrames || 8) - 1
-          }),
+          frames: buildIdleFrames(this.anims, c),
           frameRate: c.idleFrameRate || 6,
           repeat: -1
         });
