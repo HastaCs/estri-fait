@@ -1,29 +1,29 @@
-const WALK_SPEED = 200;
+const WALK_SPEED = 320;
 const WALK_MIN_X = 100;
 const WALK_MAX_X = 1180;
 const FIGHTER_BODY_W = 110;
 const FIGHTER_BODY_H = 300;
-const JUMP_DURATION_MS = 1000;
+const JUMP_DURATION_MS = 750;
 const JUMP_LIFT = 130;
 const JUMP_UP_MS = 350;
 const JUMP_DOWN_MS = 450;
-const BACKFLIP_DURATION_MS = 1250;
+const BACKFLIP_DURATION_MS = 900;
 const BACKFLIP_SPEED = 360;
 const JUMP_SPEED = 360;
-const PUNCH_DURATION_MS = 950;
-const PUNCH_HIT_MS = 285;
-const KICK_DURATION_MS = 1150;
-const KICK_HIT_MS = 430;
-const AIR_KICK_FALL_MS = 360;
+const PUNCH_DURATION_MS = 700;
+const PUNCH_HIT_MS = 160;
+const KICK_DURATION_MS = 850;
+const KICK_HIT_MS = 295;
+const AIR_KICK_FALL_MS = 300;
 const AIR_KICK_FALL_FRAC = 0.6;
-const TAUNT_DURATION_MS = 1200;
-const DEATH_DURATION_MS = 1500;
+const TAUNT_DURATION_MS = 900;
+const DEATH_DURATION_MS = 1200;
 const FIGHTER_MAX_HP = 100;
 const PUNCH_DAMAGE = 20;
 const KAME_DAMAGE = 20;
 const PUNCH_REACH = 180;
-const KAME_CHARGE_MS = 900;
-const KAME_FIRE_MS = 600;
+const KAME_CHARGE_MS = 680;
+const KAME_FIRE_MS = 450;
 const SPECIAL_CHARGE_FRAMES = 14;
 const KAME_HAND_H = 205;
 const KAME_CORE = 0xffffff;
@@ -39,10 +39,27 @@ const BLOCK_DAMAGE_FACTOR = 0.35;
 
 const HITBOXES = {
   idle: { w: 90, h: 280, ox: 0, oy: -280 },
-  punch: { w: 140, h: 80, ox: 70, oy: -180 },
-  kick: { w: 160, h: 70, ox: 90, oy: -120 },
+  punch: { w: 100, h: 90, ox: 50, oy: -250 },
+  kick: { w: 120, h: 80, ox: 55, oy: -150 },
   crouch: { w: 100, h: 160, ox: 0, oy: -160 }
 };
+
+const AI_SPEED = 160;
+const AI_APPROACH_DIST = 350;
+const AI_ATTACK_DIST = 155;
+const AI_RETREAT_DIST = 95;
+const AI_REACTION_MS = 320;
+const AI_ATTACK_COOLDOWN_MS = 1400;
+const AI_BLOCK_CHANCE = 0.3;
+const AI_JUMP_CHANCE = 0.12;
+
+const SPECIAL_MAX = 100;
+const SPECIAL_CHARGE_RATE = 45;
+const SPECIAL_CHARGE_ANIM_SCALE = 3;
+const SPECIAL_BAR_W = 300;
+const SPECIAL_BAR_H = 12;
+const HEAL_RATE = 12;
+const HEAL_ANIM_SCALE = 1.6;
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -344,6 +361,7 @@ class GameScene extends Phaser.Scene {
     this.jumping = false;
     this.backflipActive = false;
     this.backflipDir = 1;
+    this.jumpDir = 0;
     this.punching = false;
     this.taunting = false;
     this.kameActive = false;
@@ -374,11 +392,17 @@ class GameScene extends Phaser.Scene {
     this.kameChar = p1.kamehameha ? p1 : null;
     this.kamer = this.kameChar ? this.fighter1 : null;
 
+    this.specialCharge = 0;
+    this.channel = null;
+    this.channelAura = null;
+    this.channelEmitter = null;
+
     this.ensureParticleTexture();
 
     this.health1 = FIGHTER_MAX_HP;
     this.health2 = FIGHTER_MAX_HP;
     this.createHealthBars(p1, p2);
+    this.createSpecialBar();
 
     if (this.walker) {
       this.walker.on('animationcomplete', (anim) => {
@@ -388,6 +412,7 @@ class GameScene extends Phaser.Scene {
         ) {
           this.jumping = false;
           this.backflipActive = false;
+          this.jumpDir = 0;
           this.tweens.killTweensOf(this.walker);
           this.walker.y = this.groundY;
           this.applyIdle(this.walkChar, this.walker);
@@ -430,7 +455,41 @@ class GameScene extends Phaser.Scene {
       });
     }
 
-    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,F,T,Q');
+    this.ai = {
+      state: 'idle',
+      nextDecision: 0,
+      attackCooldown: 0,
+      aiPunching: false,
+      aiKicking: false,
+      aiJumping: false,
+      aiBlocking: false
+    };
+
+    this.fighter2.on('animationcomplete', (anim) => {
+      if (!this.ai) {
+        return;
+      }
+      const p2 = this.p2Char;
+      if (anim.key === `${p2.key}Punch` && this.ai.aiPunching) {
+        this.ai.aiPunching = false;
+        this.blendToIdle(p2, this.fighter2);
+      }
+      if (anim.key === `${p2.key}Kick` && this.ai.aiKicking) {
+        this.ai.aiKicking = false;
+        this.blendToIdle(p2, this.fighter2);
+      }
+      if (
+        (anim.key === `${p2.key}Jump` || anim.key === `${p2.key}Backflip`) &&
+        this.ai.aiJumping
+      ) {
+        this.ai.aiJumping = false;
+        this.tweens.killTweensOf(this.fighter2);
+        this.fighter2.y = this.groundY;
+        this.applyIdle(p2, this.fighter2);
+      }
+    });
+
+    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,F,T,Q,V');
 
     this.playIntro();
   }
@@ -465,6 +524,12 @@ class GameScene extends Phaser.Scene {
 
   resolveFighterCollision() {
     if (this.dead) {
+      this.fightersColliding = false;
+      return;
+    }
+    const airborne =
+      this.fighter1.y < this.groundY - 8 || this.fighter2.y < this.groundY - 8;
+    if (airborne) {
       this.fightersColliding = false;
       return;
     }
@@ -507,6 +572,24 @@ class GameScene extends Phaser.Scene {
       WALK_MIN_X,
       WALK_MAX_X
     );
+  }
+
+  updateFacing() {
+    const dx = this.fighter2.x - this.fighter1.x;
+    if (Math.abs(dx) < 6) {
+      return;
+    }
+    const f1Right = dx > 0;
+    this.setFacing(this.fighter1, this.p1Char, f1Right);
+    this.setFacing(this.fighter2, this.p2Char, !f1Right);
+  }
+
+  setFacing(sprite, c, mustFaceRight) {
+    if (sprite.mustFaceRight === mustFaceRight) {
+      return;
+    }
+    sprite.mustFaceRight = mustFaceRight;
+    sprite.setFlipX(c.facesRight !== mustFaceRight);
   }
 
   triggerDeath() {
@@ -597,7 +680,287 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  createSpecialBar() {
+    const x = 50;
+    const y = 84;
+    this.add
+      .rectangle(x, y, SPECIAL_BAR_W, SPECIAL_BAR_H, 0x0d0f16)
+      .setOrigin(0, 0.5)
+      .setDepth(25);
+    this.specialFill = this.add
+      .rectangle(x + 2, y, SPECIAL_BAR_W - 4, SPECIAL_BAR_H - 4, 0x00e5ff)
+      .setOrigin(0, 0.5)
+      .setDepth(27);
+    this.add
+      .rectangle(x, y, SPECIAL_BAR_W, SPECIAL_BAR_H)
+      .setStrokeStyle(2, 0xffffff)
+      .setOrigin(0, 0.5)
+      .setDepth(28);
+    this.add
+      .text(x, y - 18, 'ESPECIAL (Q)', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        fontStyle: 'bold',
+        color: '#00e5ff'
+      })
+      .setOrigin(0, 0)
+      .setDepth(28);
+    this.updateSpecialBar();
+  }
+
+  updateSpecialBar() {
+    const ratio = Phaser.Math.Clamp(this.specialCharge / SPECIAL_MAX, 0, 1);
+    const w = Math.max(0, (SPECIAL_BAR_W - 4) * ratio);
+    this.specialFill.setDisplaySize(w, SPECIAL_BAR_H - 4);
+    this.specialFill.setFillStyle(
+      this.specialCharge >= SPECIAL_MAX ? 0xffe600 : 0x00e5ff
+    );
+  }
+
+  updateSpecial(delta, walkerStunned) {
+    if (!this.kamer || this.gameOver || this.kameActive) {
+      this.stopChannel();
+      return;
+    }
+
+    const busy =
+      this.kneeling ||
+      this.kneelStanding ||
+      this.jumping ||
+      this.punching ||
+      this.kicking ||
+      this.taunting;
+    const canChannel = !walkerStunned && !busy;
+
+    const qDown =
+      canChannel && this.keys.Q.isDown && this.specialCharge < SPECIAL_MAX;
+    const vDown =
+      canChannel && this.keys.V.isDown && this.health1 < FIGHTER_MAX_HP;
+
+    let want = null;
+    if (qDown) {
+      want = 'special';
+    } else if (vDown) {
+      want = 'heal';
+    }
+
+    if (want !== this.channel) {
+      if (want) {
+        this.startChannel(want);
+      } else {
+        this.stopChannel();
+      }
+    }
+
+    if (this.channel === 'special') {
+      this.specialCharge = Math.min(
+        SPECIAL_MAX,
+        this.specialCharge + SPECIAL_CHARGE_RATE * (delta / 1000)
+      );
+      this.updateSpecialBar();
+    } else if (this.channel === 'heal') {
+      this.health1 = Math.min(
+        FIGHTER_MAX_HP,
+        this.health1 + HEAL_RATE * (delta / 1000)
+      );
+      this.updateHealthBars(true);
+    }
+
+    if (this.channel) {
+      this.updateChannelVisual();
+    }
+  }
+
+  startChannel(type) {
+    this.stopChannel();
+    this.channel = type;
+    const s = this.kamer;
+    if (s && s.anims) {
+      s.anims.timeScale =
+        type === 'special' ? SPECIAL_CHARGE_ANIM_SCALE : HEAL_ANIM_SCALE;
+    }
+    const color = type === 'special' ? 0x00e5ff : 0x3ddc6b;
+    const x = s ? s.x : this.p1X;
+    const y = this.groundY - 150;
+
+    this.channelObjects = [];
+    this.channelTweens = [];
+    this.channelTimers = [];
+
+    const emitter = this.add
+      .particles(x, y, 'spark', {
+        lifespan: 620,
+        speed: { min: 20, max: 130 },
+        angle: type === 'heal' ? { min: 250, max: 290 } : { min: 0, max: 360 },
+        scale: { start: 0.6, end: 0 },
+        alpha: { start: 0.85, end: 0 },
+        blendMode: 'ADD',
+        quantity: 4,
+        frequency: 22,
+        tint: [0xffffff, color, color],
+        emitZone: {
+          type: 'random',
+          source: new Phaser.Geom.Rectangle(-45, -150, 90, 300)
+        }
+      })
+      .setDepth(20);
+    this.channelEmitter = emitter;
+    this.channelObjects.push({ obj: emitter, dy: -150 });
+
+    if (type === 'special') {
+      this.buildSuperCharge(x, color);
+    }
+  }
+
+  buildSuperCharge(x, color) {
+    const feetY = this.groundY;
+    const bodyY = feetY - 150;
+
+    const glow = this.add
+      .ellipse(x, bodyY, 170, 350, color, 0.3)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(17);
+    this.channelObjects.push({ obj: glow, dy: -150 });
+    this.channelTweens.push(
+      this.tweens.add({
+        targets: glow,
+        scaleX: { from: 0.85, to: 1.18 },
+        scaleY: { from: 0.92, to: 1.08 },
+        alpha: { from: 0.45, to: 0.18 },
+        duration: 240,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
+    );
+
+    const column = this.add
+      .rectangle(x, bodyY, 130, 340, color, 0.16)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(16);
+    this.channelObjects.push({ obj: column, dy: -150 });
+    this.channelTweens.push(
+      this.tweens.add({
+        targets: column,
+        scaleX: { from: 0.9, to: 1.12 },
+        alpha: { from: 0.22, to: 0.1 },
+        duration: 300,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      })
+    );
+
+    const rise = this.add
+      .particles(x, feetY, 'spark', {
+        lifespan: 850,
+        speedY: { min: -640, max: -260 },
+        speedX: { min: -90, max: 90 },
+        scale: { start: 0.95, end: 0 },
+        alpha: { start: 1, end: 0 },
+        blendMode: 'ADD',
+        quantity: 7,
+        frequency: 10,
+        tint: [0xffffff, color],
+        emitZone: {
+          type: 'random',
+          source: new Phaser.Geom.Rectangle(-75, -24, 150, 48)
+        }
+      })
+      .setDepth(21);
+    this.channelObjects.push({ obj: rise, dy: 0 });
+
+    const crackle = this.add
+      .particles(x, bodyY, 'spark', {
+        lifespan: 220,
+        speed: { min: 220, max: 520 },
+        scale: { start: 0.5, end: 0 },
+        alpha: { start: 1, end: 0 },
+        blendMode: 'ADD',
+        quantity: 2,
+        frequency: 55,
+        tint: [0xffffff, 0xaaeaff],
+        emitZone: {
+          type: 'random',
+          source: new Phaser.Geom.Rectangle(-55, -150, 110, 300)
+        }
+      })
+      .setDepth(22);
+    this.channelObjects.push({ obj: crackle, dy: -150 });
+
+    this.channelTimers.push(
+      this.time.addEvent({
+        delay: 340,
+        loop: true,
+        callback: () => {
+          const ring = this.add
+            .ellipse(x, feetY - 6, 70, 24)
+            .setStrokeStyle(4, color, 0.9)
+            .setBlendMode(Phaser.BlendModes.ADD)
+            .setDepth(18);
+          this.tweens.add({
+            targets: ring,
+            scaleX: 3.4,
+            scaleY: 3.4,
+            alpha: 0,
+            duration: 620,
+            ease: 'Cubic.easeOut',
+            onComplete: () => ring.destroy()
+          });
+        }
+      })
+    );
+
+    if (this.cameras && this.cameras.main) {
+      this.cameras.main.shake(420, 0.004);
+      this.cameras.main.flash(180, 120, 220, 255);
+    }
+  }
+
+  stopChannel() {
+    if (!this.channel) {
+      return;
+    }
+    const s = this.kamer;
+    if (s && s.anims) {
+      s.anims.timeScale = 1;
+    }
+    if (this.channelTimers) {
+      this.channelTimers.forEach((t) => t.remove(false));
+      this.channelTimers = [];
+    }
+    if (this.channelTweens) {
+      this.channelTweens.forEach((t) => t.stop());
+      this.channelTweens = [];
+    }
+    if (this.channelObjects) {
+      this.channelObjects.forEach((e) => {
+        if (e.obj && e.obj.destroy) {
+          e.obj.destroy();
+        }
+      });
+      this.channelObjects = [];
+    }
+    this.channelEmitter = null;
+    this.channel = null;
+  }
+
+  updateChannelVisual() {
+    const s = this.kamer;
+    if (!s || !this.channelObjects) {
+      return;
+    }
+    this.channelObjects.forEach((e) => {
+      if (e.obj && e.obj.setPosition) {
+        e.obj.setPosition(s.x, this.groundY + e.dy);
+      }
+    });
+  }
+
   isBlocking(sprite) {
+    if (sprite === this.fighter2 && this.ai && this.ai.aiBlocking) {
+      return true;
+    }
     if (!this.controlsEnabled || sprite !== this.walker || !this.keys) {
       return false;
     }
@@ -855,6 +1218,272 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  updateAI(delta) {
+    if (
+      !this.controlsEnabled ||
+      this.gameOver ||
+      this.kameActive ||
+      !this.ai ||
+      !this.fighter2
+    ) {
+      return;
+    }
+    const ai = this.ai;
+    const f2 = this.fighter2;
+    const f1 = this.fighter1;
+    const p2 = this.p2Char;
+
+    if (this.isInHitstun(f2)) {
+      return;
+    }
+    if (ai.aiPunching || ai.aiKicking || ai.aiJumping) {
+      return;
+    }
+
+    const now = this.time.now;
+    const dt = delta / 1000;
+    const dx = f1.x - f2.x;
+    const dist = Math.abs(dx);
+    const toward = dx < 0 ? -1 : 1;
+
+    ai.aiBlocking = false;
+
+    if (now >= ai.nextDecision) {
+      const attackReady = now >= ai.attackCooldown;
+      const playerAttacking = this.punching || this.kicking || this.taunting;
+
+      if (playerAttacking && Math.random() < AI_BLOCK_CHANCE) {
+        ai.state = 'block';
+        ai.nextDecision = now + 200 + Math.random() * 150;
+      } else if (dist <= AI_ATTACK_DIST && attackReady) {
+        ai.state = 'attack';
+        ai.nextDecision = now + AI_REACTION_MS + Math.random() * 200;
+      } else if (dist < AI_RETREAT_DIST) {
+        ai.state = 'retreat';
+        ai.nextDecision = now + 300 + Math.random() * 250;
+      } else if (dist > AI_APPROACH_DIST) {
+        ai.state = 'approach';
+        ai.nextDecision = now + 350 + Math.random() * 350;
+      } else if (p2.jumpSheet && Math.random() < AI_JUMP_CHANCE) {
+        ai.state = 'jump';
+        ai.nextDecision = now + JUMP_DURATION_MS + 250;
+      } else {
+        ai.state = Math.random() < 0.5 ? 'approach' : 'idle';
+        ai.nextDecision = now + 300 + Math.random() * 350;
+      }
+    }
+
+    switch (ai.state) {
+      case 'approach': {
+        f2.x = Phaser.Math.Clamp(
+          f2.x + toward * AI_SPEED * dt,
+          WALK_MIN_X,
+          WALK_MAX_X
+        );
+        this.aiWalk(p2, f2, toward);
+        if (dist <= AI_ATTACK_DIST) {
+          ai.state = 'idle';
+          this.applyIdle(p2, f2);
+        }
+        break;
+      }
+      case 'retreat': {
+        f2.x = Phaser.Math.Clamp(
+          f2.x - toward * AI_SPEED * dt,
+          WALK_MIN_X,
+          WALK_MAX_X
+        );
+        this.aiWalk(p2, f2, -toward);
+        break;
+      }
+      case 'block': {
+        f2.x = Phaser.Math.Clamp(
+          f2.x - toward * AI_SPEED * 0.4 * dt,
+          WALK_MIN_X,
+          WALK_MAX_X
+        );
+        ai.aiBlocking = true;
+        this.aiWalk(p2, f2, -toward);
+        break;
+      }
+      case 'attack': {
+        if (dist <= AI_ATTACK_DIST + 45 && now >= ai.attackCooldown) {
+          if (p2.kickSheet && p2.punchSheet) {
+            if (Math.random() < 0.6) {
+              this.aiDoPunch();
+            } else {
+              this.aiDoKick();
+            }
+          } else if (p2.punchSheet) {
+            this.aiDoPunch();
+          } else if (p2.kickSheet) {
+            this.aiDoKick();
+          } else {
+            this.applyIdle(p2, f2);
+          }
+          ai.attackCooldown = now + AI_ATTACK_COOLDOWN_MS + Math.random() * 700;
+          ai.state = 'idle';
+        } else {
+          f2.x = Phaser.Math.Clamp(
+            f2.x + toward * AI_SPEED * dt,
+            WALK_MIN_X,
+            WALK_MAX_X
+          );
+          this.aiWalk(p2, f2, toward);
+        }
+        break;
+      }
+      case 'jump': {
+        if (p2.backflipSheet && Math.random() < 0.4) {
+          this.aiDoBackflip(toward);
+        } else {
+          this.aiDoJump(toward);
+        }
+        break;
+      }
+      case 'idle':
+      default:
+        this.applyIdle(p2, f2);
+        break;
+    }
+  }
+
+  aiWalk(p2, f2, dir) {
+    if (!p2.walkSheet) {
+      return;
+    }
+    const forward = dir === 1 ? f2.mustFaceRight : !f2.mustFaceRight;
+    this.applyWalk(p2, f2, forward);
+  }
+
+  aiHit(attacker, state) {
+    const opp = this.fighter1;
+    const hit = this.getHitbox(attacker, state);
+    const hurt = this.getHitbox(opp, this.hurtState(opp));
+    if (Phaser.Geom.Intersects.RectangleToRectangle(hit, hurt)) {
+      this.damageFighter(opp, PUNCH_DAMAGE, attacker);
+    }
+  }
+
+  aiDoPunch() {
+    const p2 = this.p2Char;
+    const f2 = this.fighter2;
+    if (!p2.punchSheet) {
+      return;
+    }
+    this.ai.aiPunching = true;
+    this.ai.aiBlocking = false;
+    if (f2.texture.key !== p2.punchSheet) {
+      f2.setTexture(p2.punchSheet);
+      f2.setOrigin(0.5, p2.punchOriginY);
+      f2.setScale(FIGHTER_TARGET_H / p2.punchSourceH);
+    }
+    f2.play(`${p2.key}Punch`);
+    if (p2.punchSound && this.sound.get(p2.punchSound)) {
+      this.sound.play(p2.punchSound);
+    }
+    this.time.delayedCall(PUNCH_HIT_MS, () => this.aiHit(f2, 'punch'));
+  }
+
+  aiDoKick() {
+    const p2 = this.p2Char;
+    const f2 = this.fighter2;
+    if (!p2.kickSheet) {
+      return;
+    }
+    this.ai.aiKicking = true;
+    this.ai.aiBlocking = false;
+    if (f2.texture.key !== p2.kickSheet) {
+      f2.setTexture(p2.kickSheet);
+      f2.setOrigin(0.5, p2.kickOriginY);
+      f2.setScale(FIGHTER_TARGET_H / p2.kickSourceH);
+    }
+    f2.play(`${p2.key}Kick`);
+    this.time.delayedCall(KICK_HIT_MS, () => this.aiHit(f2, 'kick'));
+  }
+
+  aiDoJump(toward) {
+    const p2 = this.p2Char;
+    const f2 = this.fighter2;
+    if (!p2.jumpSheet) {
+      this.applyIdle(p2, f2);
+      return;
+    }
+    this.ai.aiJumping = true;
+    this.ai.aiBlocking = false;
+    if (f2.texture.key !== p2.jumpSheet) {
+      f2.setTexture(p2.jumpSheet);
+      f2.setOrigin(0.5, p2.jumpOriginY);
+      f2.setScale(FIGHTER_TARGET_H / p2.jumpSourceH);
+    }
+    f2.play(`${p2.key}Jump`);
+    const lift = p2.jumpLift != null ? p2.jumpLift : JUMP_LIFT;
+    const peak = p2.jumpPeakFrac != null ? p2.jumpPeakFrac : 0.45;
+    const land = p2.jumpLandFrac != null ? p2.jumpLandFrac : 1;
+    f2.y = this.groundY;
+    this.tweens.add({
+      targets: f2,
+      y: this.groundY - lift,
+      duration: JUMP_DURATION_MS * peak,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: f2,
+          y: this.groundY,
+          duration: Math.max(1, JUMP_DURATION_MS * (land - peak)),
+          ease: 'Quad.easeIn'
+        });
+      }
+    });
+    this.tweens.add({
+      targets: f2,
+      x: Phaser.Math.Clamp(f2.x - toward * 120, WALK_MIN_X, WALK_MAX_X),
+      duration: JUMP_DURATION_MS,
+      ease: 'Linear'
+    });
+  }
+
+  aiDoBackflip(toward) {
+    const p2 = this.p2Char;
+    const f2 = this.fighter2;
+    if (!p2.backflipSheet) {
+      this.aiDoJump(toward);
+      return;
+    }
+    this.ai.aiJumping = true;
+    this.ai.aiBlocking = false;
+    if (f2.texture.key !== p2.backflipSheet) {
+      f2.setTexture(p2.backflipSheet);
+      f2.setOrigin(0.5, p2.backflipOriginY);
+      f2.setScale(FIGHTER_TARGET_H / p2.backflipSourceH);
+    }
+    f2.play(`${p2.key}Backflip`);
+    const lift = p2.backflipLift != null ? p2.backflipLift : JUMP_LIFT;
+    const peak = p2.backflipPeakFrac != null ? p2.backflipPeakFrac : 0.45;
+    const land = p2.backflipLandFrac != null ? p2.backflipLandFrac : 1;
+    f2.y = this.groundY;
+    this.tweens.add({
+      targets: f2,
+      y: this.groundY - lift,
+      duration: BACKFLIP_DURATION_MS * peak,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.tweens.add({
+          targets: f2,
+          y: this.groundY,
+          duration: Math.max(1, BACKFLIP_DURATION_MS * (land - peak)),
+          ease: 'Quad.easeIn'
+        });
+      }
+    });
+    this.tweens.add({
+      targets: f2,
+      x: Phaser.Math.Clamp(f2.x - toward * 150, WALK_MIN_X, WALK_MAX_X),
+      duration: BACKFLIP_DURATION_MS,
+      ease: 'Quad.easeOut'
+    });
+  }
+
   startAirKickFall() {
     if (!this.airKicking || this.airKickFalling) {
       return;
@@ -872,6 +1501,7 @@ class GameScene extends Phaser.Scene {
         this.kicking = false;
         this.jumping = false;
         this.backflipActive = false;
+        this.jumpDir = 0;
         this.blendToIdle(this.kickChar, this.kicker);
       }
     });
@@ -1212,6 +1842,8 @@ class GameScene extends Phaser.Scene {
     }
 
     this.resolveFighterCollision();
+    this.updateFacing();
+    this.updateAI(delta);
 
     if (!this.walker || this.kameActive) {
       return;
@@ -1222,6 +1854,11 @@ class GameScene extends Phaser.Scene {
     const puncherStunned = this.puncher ? this.isInHitstun(this.puncher) : false;
     const taunterStunned = this.taunter ? this.isInHitstun(this.taunter) : false;
     const kamerStunned = this.kamer ? this.isInHitstun(this.kamer) : false;
+
+    this.updateSpecial(delta, walkerStunned);
+    if (this.channel) {
+      return;
+    }
 
     const left = !walkerStunned && this.keys.A.isDown;
     const right = !walkerStunned && this.keys.D.isDown;
@@ -1266,10 +1903,9 @@ class GameScene extends Phaser.Scene {
           WALK_MIN_X,
           WALK_MAX_X
         );
-      } else if (left || right) {
-        const dir = right ? 1 : -1;
+      } else if (this.jumpDir) {
         this.walker.x = Phaser.Math.Clamp(
-          this.walker.x + dir * JUMP_SPEED * dt,
+          this.walker.x + this.jumpDir * JUMP_SPEED * dt,
           WALK_MIN_X,
           WALK_MAX_X
         );
@@ -1307,6 +1943,7 @@ class GameScene extends Phaser.Scene {
         this.taunting = false;
         this.jumping = true;
         this.backflipActive = true;
+        this.jumpDir = 0;
         this.backflipDir = right ? 1 : -1;
         this.walkerMoving = false;
         this.applyBackflip(this.walkChar, this.walker);
@@ -1329,6 +1966,7 @@ class GameScene extends Phaser.Scene {
         this.taunting = false;
         this.jumping = true;
         this.backflipActive = false;
+        this.jumpDir = right ? 1 : left ? -1 : 0;
         this.walkerMoving = false;
         this.applyJump(this.walkChar, this.walker);
         this.playJumpArc();
@@ -1354,17 +1992,12 @@ class GameScene extends Phaser.Scene {
       !kamerStunned &&
       Phaser.Input.Keyboard.JustDown(this.keys.T)
     ) {
-      this.playKamehameha();
-      return;
-    }
-
-    if (
-      this.tauntChar &&
-      !taunterStunned &&
-      Phaser.Input.Keyboard.JustDown(this.keys.Q)
-    ) {
-      this.taunting = true;
-      this.applyTaunt(this.tauntChar, this.taunter);
+      if (this.specialCharge >= SPECIAL_MAX) {
+        this.specialCharge = 0;
+        this.updateSpecialBar();
+        this.stopChannel();
+        this.playKamehameha();
+      }
       return;
     }
 

@@ -227,7 +227,7 @@ class SelectScene extends Phaser.Scene {
       .setDepth(4);
 
     this.add
-      .text(cx, 148, 'ELIGE DOS LUCHADORES', {
+      .text(cx, 148, 'ELIGE TU LUCHADOR (VS CPU)', {
         fontFamily: 'monospace',
         fontSize: '20px',
         color: '#00e5ff'
@@ -359,8 +359,8 @@ class SelectScene extends Phaser.Scene {
 
     if (this.p1 === null) {
       this.prompt.setText('JUGADOR 1: ELIGE TU LUCHADOR').setColor('#00e5ff');
-    } else if (this.p2 === null) {
-      this.prompt.setText('JUGADOR 2: ELIGE TU LUCHADOR').setColor('#ff2d95');
+    } else {
+      this.prompt.setText('CPU: AGUSTIN').setColor('#ff2d95');
     }
   }
 
@@ -399,28 +399,24 @@ class SelectScene extends Phaser.Scene {
   }
 
   confirm() {
-    let label;
-    let color;
-    if (this.p1 === null) {
-      this.p1 = this.cursor;
-      label = 'P1';
-      color = 0x00e5ff;
-    } else if (this.p2 === null) {
-      this.p2 = this.cursor;
-      label = 'P2';
-      color = 0xff2d95;
-    } else {
+    if (this.p1 !== null) {
       return;
     }
 
-    this.refresh();
-    this.celebrate(this.panels[this.cursor], label, color);
-
-    if (this.p1 !== null && this.p2 !== null) {
-      this.time.delayedCall(950, () => {
-        this.scene.start('BackgroundScene', { p1: this.p1, p2: this.p2 });
-      });
+    this.p1 = this.cursor;
+    this.p2 = CHARACTERS.findIndex((c) => c.key === 'agustin');
+    if (this.p2 < 0) {
+      this.p2 = this.p1;
     }
+
+    this.refresh();
+    this.celebrate(this.panels[this.p1], 'P1', 0x00e5ff);
+    this.time.delayedCall(420, () => {
+      this.celebrate(this.panels[this.p2], 'CPU', 0xff2d95);
+    });
+    this.time.delayedCall(1250, () => {
+      this.scene.start('BackgroundScene', { p1: this.p1, p2: this.p2 });
+    });
   }
 
   celebrate(panel, label, color) {

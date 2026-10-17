@@ -7,6 +7,17 @@ const config = {
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
   backgroundColor: '#1b1e28',
+  fps: {
+    target: 240,
+    min: 30,
+    forceSetTimeOut: false,
+    smoothStep: false
+  },
+  render: {
+    antialias: true,
+    roundPixels: false,
+    powerPreference: 'high-performance'
+  },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH
