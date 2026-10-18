@@ -87,6 +87,22 @@ def remove_enclosed_bg(img, min_size=300):
     return img
 
 
+def is_near_white(p):
+    r, g, b = p[:3]
+    return (max(r, g, b) - min(r, g, b)) <= 30 and (r + g + b) / 3 >= 150
+
+
+def remove_near_white(img):
+    w, h = img.size
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            p = px[x, y]
+            if p[3] > 128 and is_near_white(p):
+                px[x, y] = (0, 0, 0, 0)
+    return img
+
+
 def is_shadow(p):
     r, g, b = p[:3]
     br = (r + g + b) / 3
@@ -197,7 +213,8 @@ def cutout(img):
     return out
 
 
-def build(video, out):
+def build(video, out, base=None, remove_white=False):
+    base = base or A
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
         files = extract_frames(video, tmp)
@@ -226,13 +243,15 @@ def build(video, out):
         y = r * fh + baseline - fr.height
         sheet.paste(fr, (x, y), fr)
 
-    sheet = clean_video(sheet)
-    (A / out).parent.mkdir(parents=True, exist_ok=True)
-    sheet.save(A / out)
+    sheet = clean_video(sheet, remove_white=remove_white)
+    (base / out).parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(base / out)
     print(f"{out}: frame={fw}x{fh} frames={len(frames)} originY={baseline / fh:.4f}")
 
 
-def clean_video(sheet):
+def clean_video(sheet, remove_white=False):
+    if remove_white:
+        sheet = remove_near_white(sheet)
     return imgclean.smooth_alpha(
         imgclean.bleed_colors(
             imgclean.defringe(imgclean.erode_alpha(sheet, 2), rounds=8)

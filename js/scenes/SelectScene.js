@@ -8,7 +8,7 @@ class SelectScene extends Phaser.Scene {
       this.load.audio('bgm', 'assets/audio/audio1.mp3');
     }
     CHARACTERS.forEach((c) => {
-      this.load.image(c.face, `assets/${c.key}/${c.key}_face.png`);
+      this.load.image(c.face, `assets/${c.key}/${c.key}_face.png?v=2`);
       this.load.spritesheet(c.sheet, c.sheetPath, {
         frameWidth: c.frameW,
         frameHeight: c.frameH
@@ -227,7 +227,7 @@ class SelectScene extends Phaser.Scene {
       .setDepth(4);
 
     this.add
-      .text(cx, 148, 'ELIGE TU LUCHADOR (VS CPU)', {
+      .text(cx, 148, 'ELEGID VUESTROS LUCHADORES', {
         fontFamily: 'monospace',
         fontSize: '20px',
         color: '#00e5ff'
@@ -359,8 +359,10 @@ class SelectScene extends Phaser.Scene {
 
     if (this.p1 === null) {
       this.prompt.setText('JUGADOR 1: ELIGE TU LUCHADOR').setColor('#00e5ff');
+    } else if (this.p2 === null) {
+      this.prompt.setText('JUGADOR 2: ELIGE TU LUCHADOR').setColor('#ff2d95');
     } else {
-      this.prompt.setText('CPU: AGUSTIN').setColor('#ff2d95');
+      this.prompt.setText('LISTO: A PELEAR').setColor('#ffe600');
     }
   }
 
@@ -399,24 +401,21 @@ class SelectScene extends Phaser.Scene {
   }
 
   confirm() {
-    if (this.p1 !== null) {
+    if (this.p1 === null) {
+      this.p1 = this.cursor;
+      this.refresh();
+      this.celebrate(this.panels[this.p1], 'P1', 0x00e5ff);
       return;
     }
 
-    this.p1 = this.cursor;
-    this.p2 = CHARACTERS.findIndex((c) => c.key === 'agustin');
-    if (this.p2 < 0) {
-      this.p2 = this.p1;
+    if (this.p2 === null) {
+      this.p2 = this.cursor;
+      this.refresh();
+      this.celebrate(this.panels[this.p2], 'P2', 0xff2d95);
+      this.time.delayedCall(1150, () => {
+        this.scene.start('BackgroundScene', { p1: this.p1, p2: this.p2 });
+      });
     }
-
-    this.refresh();
-    this.celebrate(this.panels[this.p1], 'P1', 0x00e5ff);
-    this.time.delayedCall(420, () => {
-      this.celebrate(this.panels[this.p2], 'CPU', 0xff2d95);
-    });
-    this.time.delayedCall(1250, () => {
-      this.scene.start('BackgroundScene', { p1: this.p1, p2: this.p2 });
-    });
   }
 
   celebrate(panel, label, color) {

@@ -36,6 +36,7 @@ const BLOCK_KNOCKBACK = 18;
 const HITSTUN_MS = 320;
 const BLOCK_HITSTUN_MS = 180;
 const BLOCK_DAMAGE_FACTOR = 0.35;
+const GUARD_RANGE = 220;
 
 const HITBOXES = {
   idle: { w: 90, h: 280, ox: 0, oy: -280 },
@@ -60,6 +61,10 @@ const SPECIAL_BAR_W = 300;
 const SPECIAL_BAR_H = 12;
 const HEAL_RATE = 12;
 const HEAL_ANIM_SCALE = 1.6;
+const CAT_TARGET_H = 110;
+const CAT_SPEED = 620;
+const CAT_INTRO_MS = 1500;
+const CAMEL_DASH_MS = 1000;
 
 class GameScene extends Phaser.Scene {
   constructor() {
@@ -100,6 +105,24 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet(c.jumpSheet, c.jumpSheetPath, {
           frameWidth: c.jumpFrameW,
           frameHeight: c.jumpFrameH
+        });
+      }
+      if (c.jumpForwardSheet) {
+        this.load.spritesheet(c.jumpForwardSheet, c.jumpForwardSheetPath, {
+          frameWidth: c.jumpForwardFrameW,
+          frameHeight: c.jumpForwardFrameH
+        });
+      }
+      if (c.guardSheet) {
+        this.load.spritesheet(c.guardSheet, c.guardSheetPath, {
+          frameWidth: c.guardFrameW,
+          frameHeight: c.guardFrameH
+        });
+      }
+      if (c.hitSheet) {
+        this.load.spritesheet(c.hitSheet, c.hitSheetPath, {
+          frameWidth: c.hitFrameW,
+          frameHeight: c.hitFrameH
         });
       }
       if (c.backflipSheet) {
@@ -148,6 +171,27 @@ class GameScene extends Phaser.Scene {
         this.load.spritesheet(c.deathSheet, c.deathSheetPath, {
           frameWidth: c.deathFrameW,
           frameHeight: c.deathFrameH
+        });
+      }
+      if (c.gabiSheet && !this.textures.exists(c.gabiSheet)) {
+        this.load.spritesheet(c.gabiSheet, c.gabiSheetPath, {
+          frameWidth: c.gabiFrameW,
+          frameHeight: c.gabiFrameH
+        });
+      }
+      if (c.gabiInvocation && !this.textures.exists(c.gabiInvocation)) {
+        this.load.image(c.gabiInvocation, c.gabiInvocationPath);
+      }
+      if (c.specialInvocation && !this.textures.exists(c.specialInvocation)) {
+        this.load.image(c.specialInvocation, c.specialInvocationPath);
+      }
+      if (c.gabiSound && !this.cache.audio.exists(c.gabiSound)) {
+        this.load.audio(c.gabiSound, c.gabiSoundPath);
+      }
+      if (c.chargeSheet && !this.textures.exists(c.chargeSheet)) {
+        this.load.spritesheet(c.chargeSheet, c.chargeSheetPath, {
+          frameWidth: c.chargeFrameW,
+          frameHeight: c.chargeFrameH
         });
       }
     });
@@ -206,13 +250,58 @@ class GameScene extends Phaser.Scene {
         });
       }
       if (c.jumpSheet && !this.anims.exists(`${c.key}Jump`)) {
+        const jumpDur = c.jumpDurationMs || JUMP_DURATION_MS;
         this.anims.create({
           key: `${c.key}Jump`,
           frames: this.anims.generateFrameNumbers(c.jumpSheet, {
             start: 0,
             end: c.jumpFrames - 1
           }),
-          frameRate: c.jumpFrames / (JUMP_DURATION_MS / 1000),
+          frameRate: c.jumpFrameRate || c.jumpFrames / (jumpDur / 1000),
+          repeat: 0
+        });
+      }
+      if (c.jumpForwardSheet && !this.anims.exists(`${c.key}JumpForward`)) {
+        const jumpDur = c.jumpDurationMs || JUMP_DURATION_MS;
+        this.anims.create({
+          key: `${c.key}JumpForward`,
+          frames: this.anims.generateFrameNumbers(c.jumpForwardSheet, {
+            start: 0,
+            end: c.jumpForwardFrames - 1
+          }),
+          frameRate: c.jumpForwardFrameRate || c.jumpForwardFrames / (jumpDur / 1000),
+          repeat: 0
+        });
+      }
+      if (c.guardSheet && !this.anims.exists(`${c.key}Guard`)) {
+        const holdStart = c.guardHoldStart != null ? c.guardHoldStart : 0;
+        const holdEnd = c.guardHoldEnd != null ? c.guardHoldEnd : c.guardFrames - 1;
+        this.anims.create({
+          key: `${c.key}Guard`,
+          frames: this.anims.generateFrameNumbers(c.guardSheet, {
+            start: 0,
+            end: holdStart
+          }),
+          frameRate: c.guardUpFrameRate || 30,
+          repeat: 0
+        });
+        this.anims.create({
+          key: `${c.key}GuardHold`,
+          frames: this.anims.generateFrameNumbers(c.guardSheet, {
+            start: holdStart,
+            end: holdEnd
+          }),
+          frameRate: c.guardHoldFrameRate || 10,
+          repeat: -1,
+          yoyo: true
+        });
+        this.anims.create({
+          key: `${c.key}GuardDown`,
+          frames: this.anims.generateFrameNumbers(c.guardSheet, {
+            start: holdEnd,
+            end: c.guardFrames - 1
+          }),
+          frameRate: c.guardDownFrameRate || 20,
           repeat: 0
         });
       }
@@ -240,6 +329,47 @@ class GameScene extends Phaser.Scene {
       }
       if (c.specialSound && !this.sound.get(c.specialSound)) {
         this.sound.add(c.specialSound, { volume: 0.6 });
+      }
+      if (c.gabiSound && !this.sound.get(c.gabiSound)) {
+        this.sound.add(c.gabiSound, { volume: 0.8 });
+      }
+      if (c.gabiSheet && !this.anims.exists(`${c.key}Gabi`)) {
+        this.anims.create({
+          key: `${c.key}Gabi`,
+          frames: this.anims.generateFrameNumbers(c.gabiSheet, {
+            start: 0,
+            end: c.gabiFrames - 1
+          }),
+          frameRate: 20,
+          repeat: -1
+        });
+      }
+      if (c.chargeSheet && !this.anims.exists(`${c.key}Charge`)) {
+        const auraStart =
+          c.chargeAuraStart != null ? c.chargeAuraStart : c.chargeFrames - 1;
+        const auraEnd =
+          c.chargeAuraEnd != null ? c.chargeAuraEnd : c.chargeFrames - 1;
+        this.anims.create({
+          key: `${c.key}Charge`,
+          frames: this.anims.generateFrameNumbers(c.chargeSheet, {
+            start: 0,
+            end: auraStart
+          }),
+          frameRate: c.chargeFrameRate || 18,
+          repeat: 0
+        });
+        if (!this.anims.exists(`${c.key}ChargeLoop`)) {
+          this.anims.create({
+            key: `${c.key}ChargeLoop`,
+            frames: this.anims.generateFrameNumbers(c.chargeSheet, {
+              start: auraStart,
+              end: auraEnd
+            }),
+            frameRate: c.chargeLoopFrameRate || 16,
+            repeat: -1,
+            yoyo: true
+          });
+        }
       }
       if (c.kneelSheet && !this.anims.exists(`${c.key}KneelDown`)) {
         const down = this.anims.generateFrameNumbers(c.kneelSheet, {
@@ -279,7 +409,7 @@ class GameScene extends Phaser.Scene {
             start: 0,
             end: c.punchFrames - 1
           }),
-          frameRate: c.punchFrames / (PUNCH_DURATION_MS / 1000),
+          frameRate: c.punchFrameRate || c.punchFrames / (PUNCH_DURATION_MS / 1000),
           repeat: 0
         });
       }
@@ -293,7 +423,20 @@ class GameScene extends Phaser.Scene {
             start: 0,
             end: c.tauntFrames - 1
           }),
-          frameRate: c.tauntFrames / (TAUNT_DURATION_MS / 1000),
+          frameRate: c.tauntFrameRate || c.tauntFrames / (TAUNT_DURATION_MS / 1000),
+          repeat: 0
+        });
+      }
+      if (c.hitSheet && !this.anims.exists(`${c.key}Hit`)) {
+        const start = c.hitStartFrame != null ? c.hitStartFrame : 0;
+        const end = c.hitEndFrame != null ? c.hitEndFrame : c.hitFrames - 1;
+        this.anims.create({
+          key: `${c.key}Hit`,
+          frames: this.anims.generateFrameNumbers(c.hitSheet, {
+            start,
+            end
+          }),
+          frameRate: c.hitFrameRate || 20,
           repeat: 0
         });
       }
@@ -368,6 +511,10 @@ class GameScene extends Phaser.Scene {
     this.fightersColliding = false;
     this.jumpKey =
       this.walkChar && this.walkChar.jumpSheet ? `${this.walkChar.key}Jump` : null;
+    this.jumpForwardKey =
+      this.walkChar && this.walkChar.jumpForwardSheet
+        ? `${this.walkChar.key}JumpForward`
+        : null;
     this.backflipKey =
       this.walkChar && this.walkChar.backflipSheet
         ? `${this.walkChar.key}Backflip`
@@ -391,10 +538,34 @@ class GameScene extends Phaser.Scene {
 
     this.kameChar = p1.kamehameha ? p1 : null;
     this.kamer = this.kameChar ? this.fighter1 : null;
+    this.catChar = p1.catAttack ? p1 : null;
+    this.cater = this.catChar ? this.fighter1 : null;
+    this.camelChar = p1.travelAttack ? p1 : null;
+    this.cameler = this.camelChar ? this.fighter1 : null;
+    this.specialer = this.kamer || this.cater || this.cameler;
+    this.specialChar = this.kameChar || this.catChar || this.camelChar;
+    this.catActive = false;
+    this.catHitDone = false;
+    this.camelActive = false;
+    this.camelHitDone = false;
+
+    this.guardChar = p1.guardSheet ? p1 : null;
+    this.p2guardChar = p2.guardSheet ? p2 : null;
+
+    this.p2walkChar =
+      p2.walkSheet || p2.jumpSheet || p2.jumpForwardSheet ? p2 : null;
+    this.p2state = {
+      walkMoving: false,
+      jumping: false,
+      backflipActive: false,
+      backflipDir: 1,
+      jumpDir: 0,
+      kneeling: false,
+      kneelStanding: false
+    };
 
     this.specialCharge = 0;
     this.channel = null;
-    this.channelAura = null;
     this.channelEmitter = null;
 
     this.ensureParticleTexture();
@@ -407,7 +578,9 @@ class GameScene extends Phaser.Scene {
     if (this.walker) {
       this.walker.on('animationcomplete', (anim) => {
         if (
-          (anim.key === this.jumpKey || anim.key === this.backflipKey) &&
+          (anim.key === this.jumpKey ||
+            anim.key === this.jumpForwardKey ||
+            anim.key === this.backflipKey) &&
           this.jumping
         ) {
           this.jumping = false;
@@ -455,6 +628,19 @@ class GameScene extends Phaser.Scene {
       });
     }
 
+    [this.fighter1, this.fighter2].forEach((sprite, i) => {
+      const c = i === 0 ? p1 : p2;
+      if (!c.hitSheet) {
+        return;
+      }
+      sprite.on('animationcomplete', (anim) => {
+        if (anim.key === `${c.key}Hit` && sprite.hitPlaying) {
+          sprite.hitPlaying = false;
+          this.applyIdle(c, sprite);
+        }
+      });
+    });
+
     this.ai = {
       state: 'idle',
       nextDecision: 0,
@@ -464,6 +650,7 @@ class GameScene extends Phaser.Scene {
       aiJumping: false,
       aiBlocking: false
     };
+    this.aiEnabled = false;
 
     this.fighter2.on('animationcomplete', (anim) => {
       if (!this.ai) {
@@ -487,9 +674,55 @@ class GameScene extends Phaser.Scene {
         this.fighter2.y = this.groundY;
         this.applyIdle(p2, this.fighter2);
       }
+
+      const p2w = this.p2walkChar;
+      if (p2w && this.p2state) {
+        if (
+          (anim.key === `${p2w.key}Jump` ||
+            anim.key === `${p2w.key}JumpForward` ||
+            anim.key === `${p2w.key}Backflip`) &&
+          this.p2state.jumping
+        ) {
+          this.p2state.jumping = false;
+          this.p2state.backflipActive = false;
+          this.p2state.jumpDir = 0;
+          this.tweens.killTweensOf(this.fighter2);
+          this.fighter2.y = this.groundY;
+          this.applyIdle(p2w, this.fighter2);
+        }
+        if (anim.key === `${p2w.key}KneelUp` && this.p2state.kneelStanding) {
+          this.p2state.kneelStanding = false;
+          this.p2state.kneeling = false;
+          this.applyIdle(p2w, this.fighter2);
+        }
+      }
     });
 
-    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,F,T,Q,V');
+    this.fighter1.on('animationcomplete', (anim) => {
+      const c = this.specialChar;
+      if (c && c.chargeSheet && this.channel === 'special' && anim.key === `${c.key}Charge`) {
+        if (this.anims.exists(`${c.key}ChargeLoop`)) {
+          this.fighter1.play(`${c.key}ChargeLoop`);
+        }
+      }
+    });
+
+    [this.fighter1, this.fighter2].forEach((sprite, i) => {
+      const c = i === 0 ? p1 : p2;
+      if (!c.guardSheet) {
+        return;
+      }
+      sprite.on('animationcomplete', (anim) => {
+        if (anim.key === `${c.key}Guard` && sprite.guarding) {
+          sprite.play(`${c.key}GuardHold`);
+        } else if (anim.key === `${c.key}GuardDown`) {
+          this.applyIdle(c, sprite);
+        }
+      });
+    });
+
+    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,W,F,T,Q,V,H,B');
+    this.p2keys = this.input.keyboard.addKeys('I,J,K,L');
 
     this.playIntro();
   }
@@ -718,7 +951,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateSpecial(delta, walkerStunned) {
-    if (!this.kamer || this.gameOver || this.kameActive) {
+    if (!this.specialer || this.gameOver || this.kameActive || this.catActive || this.camelActive) {
       this.stopChannel();
       return;
     }
@@ -729,7 +962,9 @@ class GameScene extends Phaser.Scene {
       this.jumping ||
       this.punching ||
       this.kicking ||
-      this.taunting;
+      this.taunting ||
+      (this.walker && this.walker.guarding) ||
+      (this.walker && this.walker.hitPlaying);
     const canChannel = !walkerStunned && !busy;
 
     const qDown =
@@ -774,50 +1009,74 @@ class GameScene extends Phaser.Scene {
   startChannel(type) {
     this.stopChannel();
     this.channel = type;
-    const s = this.kamer;
-    if (s && s.anims) {
-      s.anims.timeScale =
-        type === 'special' ? SPECIAL_CHARGE_ANIM_SCALE : HEAL_ANIM_SCALE;
-    }
+    const s = this.specialer;
+    const c = this.specialChar;
     const color = type === 'special' ? 0x00e5ff : 0x3ddc6b;
     const x = s ? s.x : this.p1X;
     const y = this.groundY - 150;
+    const hasChargeAnim = !!(type === 'special' && c && c.chargeSheet);
+
+    if (hasChargeAnim) {
+      this.applyCharge(c, s);
+    } else if (s && s.anims) {
+      s.anims.timeScale =
+        type === 'special' ? SPECIAL_CHARGE_ANIM_SCALE : HEAL_ANIM_SCALE;
+    }
 
     this.channelObjects = [];
     this.channelTweens = [];
     this.channelTimers = [];
 
-    const emitter = this.add
-      .particles(x, y, 'spark', {
-        lifespan: 620,
-        speed: { min: 20, max: 130 },
-        angle: type === 'heal' ? { min: 250, max: 290 } : { min: 0, max: 360 },
-        scale: { start: 0.6, end: 0 },
-        alpha: { start: 0.85, end: 0 },
-        blendMode: 'ADD',
-        quantity: 4,
-        frequency: 22,
-        tint: [0xffffff, color, color],
-        emitZone: {
-          type: 'random',
-          source: new Phaser.Geom.Rectangle(-45, -150, 90, 300)
-        }
-      })
-      .setDepth(20);
-    this.channelEmitter = emitter;
-    this.channelObjects.push({ obj: emitter, dy: -150 });
+    const wild = !!(c && c.chargeParticles);
+    if (!hasChargeAnim || wild) {
+      const emitter = this.add
+        .particles(x, y, 'spark', {
+          lifespan: 620,
+          speed: wild ? { min: 60, max: 300 } : { min: 20, max: 130 },
+          angle: type === 'heal' ? { min: 250, max: 290 } : { min: 0, max: 360 },
+          scale: { start: 0.7, end: 0 },
+          alpha: { start: 0.9, end: 0 },
+          blendMode: 'ADD',
+          quantity: wild ? 6 : 4,
+          frequency: wild ? 14 : 22,
+          tint: [0xffffff, color, color],
+          emitZone: {
+            type: 'random',
+            source: new Phaser.Geom.Rectangle(-45, -150, 90, 300)
+          }
+        })
+        .setDepth(20);
+      this.channelEmitter = emitter;
+      this.channelObjects.push({ obj: emitter, dy: -150 });
+    } else {
+      this.channelEmitter = null;
+    }
 
     if (type === 'special') {
-      this.buildSuperCharge(x, color);
+      if (!wild && !(c && c.chargeGlow === false)) {
+        this.buildSuperCharge(x, color, hasChargeAnim);
+      }
     }
   }
 
-  buildSuperCharge(x, color) {
+  applyCharge(c, sprite) {
+    if (!sprite) {
+      return;
+    }
+    if (sprite.texture.key !== c.chargeSheet) {
+      sprite.setTexture(c.chargeSheet);
+      sprite.setOrigin(0.5, c.chargeOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.chargeSourceH);
+    }
+    sprite.play(`${c.key}Charge`);
+  }
+
+  buildSuperCharge(x, color, light) {
     const feetY = this.groundY;
     const bodyY = feetY - 150;
 
     const glow = this.add
-      .ellipse(x, bodyY, 170, 350, color, 0.3)
+      .ellipse(x, bodyY, light ? 130 : 170, light ? 300 : 350, color, light ? 0.2 : 0.3)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(17);
     this.channelObjects.push({ obj: glow, dy: -150 });
@@ -833,6 +1092,10 @@ class GameScene extends Phaser.Scene {
         ease: 'Sine.easeInOut'
       })
     );
+
+    if (light) {
+      return;
+    }
 
     const column = this.add
       .rectangle(x, bodyY, 130, 340, color, 0.16)
@@ -921,9 +1184,14 @@ class GameScene extends Phaser.Scene {
     if (!this.channel) {
       return;
     }
-    const s = this.kamer;
+    const type = this.channel;
+    const s = this.specialer;
+    const c = this.specialChar;
     if (s && s.anims) {
       s.anims.timeScale = 1;
+    }
+    if (type === 'special' && c && c.chargeSheet && s) {
+      this.applyIdle(c, s);
     }
     if (this.channelTimers) {
       this.channelTimers.forEach((t) => t.remove(false));
@@ -946,7 +1214,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateChannelVisual() {
-    const s = this.kamer;
+    const s = this.specialer;
     if (!s || !this.channelObjects) {
       return;
     }
@@ -961,10 +1229,87 @@ class GameScene extends Phaser.Scene {
     if (sprite === this.fighter2 && this.ai && this.ai.aiBlocking) {
       return true;
     }
-    if (!this.controlsEnabled || sprite !== this.walker || !this.keys) {
+    return !!sprite.guarding;
+  }
+
+  guardCharOf(sprite) {
+    return sprite === this.fighter1 ? this.guardChar : this.p2guardChar;
+  }
+
+  holdBack(sprite) {
+    if (!this.keys || !this.p2keys) {
       return false;
     }
-    return sprite.mustFaceRight ? this.keys.A.isDown : this.keys.D.isDown;
+    if (sprite === this.fighter1) {
+      return sprite.mustFaceRight ? this.keys.A.isDown : this.keys.D.isDown;
+    }
+    if (sprite === this.fighter2) {
+      return sprite.mustFaceRight ? this.p2keys.J.isDown : this.p2keys.L.isDown;
+    }
+    return false;
+  }
+
+  isAttacking(sprite) {
+    if (sprite === this.fighter1) {
+      return this.punching || this.kicking || this.kameActive || this.catActive || this.camelActive;
+    }
+    if (sprite === this.fighter2 && this.p2state) {
+      return !!(this.p2state.punching || this.p2state.kicking);
+    }
+    return false;
+  }
+
+  wantGuard(sprite) {
+    if (!this.controlsEnabled || this.gameOver || sprite.hitPlaying) {
+      return false;
+    }
+    if (sprite === this.fighter1) {
+      if (
+        this.jumping ||
+        this.punching ||
+        this.kicking ||
+        this.taunting ||
+        this.kneeling ||
+        this.kneelStanding ||
+        this.channel
+      ) {
+        return false;
+      }
+    } else {
+      const st = this.p2state;
+      if (st && (st.jumping || st.kneeling || st.kneelStanding)) {
+        return false;
+      }
+    }
+    const opp = this.opponentOf(sprite);
+    if (!this.isAttacking(opp)) {
+      return false;
+    }
+    if (Math.abs(sprite.x - opp.x) > GUARD_RANGE) {
+      return false;
+    }
+    return this.holdBack(sprite);
+  }
+
+  updateGuard(sprite) {
+    const c = this.guardCharOf(sprite);
+    if (c && this.wantGuard(sprite)) {
+      if (!sprite.guarding) {
+        sprite.guarding = true;
+        if (sprite === this.walker) {
+          this.walkerMoving = false;
+        }
+        this.applyGuard(c, sprite);
+      }
+      return true;
+    }
+    if (sprite.guarding) {
+      sprite.guarding = false;
+      if (c) {
+        this.applyGuardDown(c, sprite);
+      }
+    }
+    return false;
   }
 
   isInHitstun(sprite) {
@@ -1009,27 +1354,64 @@ class GameScene extends Phaser.Scene {
   squashHit(sprite) {
     const baseX = sprite.scaleX;
     const baseY = sprite.scaleY;
-    this.tweens.add({
-      targets: sprite,
-      scaleX: baseX * 1.04,
-      scaleY: baseY * 0.93,
+    const key = sprite.texture.key;
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
       duration: 100,
       yoyo: true,
-      ease: 'Quad.easeOut'
+      ease: 'Quad.easeOut',
+      onUpdate: (tw) => {
+        if (sprite.texture.key !== key) {
+          tw.stop();
+          return;
+        }
+        const f = tw.getValue();
+        sprite.setScale(baseX * (1 + 0.04 * f), baseY * (1 - 0.07 * f));
+      }
     });
+  }
+
+  blockSparks(x, y) {
+    const burst = this.add
+      .particles(x, y, 'spark', {
+        lifespan: 460,
+        speed: { min: 120, max: 340 },
+        angle: { min: 200, max: 340 },
+        gravityY: 620,
+        scale: { start: 0.8, end: 0 },
+        alpha: { start: 1, end: 0 },
+        blendMode: 'ADD',
+        tint: [0xffffff, 0xbde0ff, 0x66ccff],
+        emitting: false
+      })
+      .setDepth(23);
+    burst.explode(18, x, y);
+    this.time.delayedCall(600, () => burst.destroy());
   }
 
   blendToIdle(c, sprite) {
     this.applyIdle(c, sprite);
     const baseX = sprite.scaleX;
     const baseY = sprite.scaleY;
+    const key = sprite.texture.key;
     sprite.setScale(baseX * 1.03, baseY * 0.97);
-    this.tweens.add({
-      targets: sprite,
-      scaleX: baseX,
-      scaleY: baseY,
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
       duration: 150,
-      ease: 'Quad.easeOut'
+      ease: 'Quad.easeOut',
+      onUpdate: (tw) => {
+        if (sprite.texture.key !== key) {
+          tw.stop();
+          return;
+        }
+        const f = tw.getValue();
+        sprite.setScale(
+          baseX * (1 + 0.03 * (1 - f)),
+          baseY * (1 - 0.03 * (1 - f))
+        );
+      }
     });
   }
 
@@ -1056,10 +1438,24 @@ class GameScene extends Phaser.Scene {
       this.time.now + (blocking ? BLOCK_HITSTUN_MS : HITSTUN_MS);
     this.flashHit(sprite, blocking);
     this.squashHit(sprite);
+    if (blocking && attacker) {
+      const dir =
+        Math.sign(sprite.x - attacker.x) || (attacker.mustFaceRight ? 1 : -1);
+      this.blockSparks(attacker.x + dir * 100, this.groundY - 230);
+    }
     if (this.cameras && this.cameras.main) {
       this.cameras.main.shake(150, blocking ? 0.003 : 0.006);
     }
     this.updateHealthBars(false);
+
+    if (
+      !blocking &&
+      hp > 0 &&
+      sprite.y >= this.groundY - 8 &&
+      !(sprite === this.walker && this.channel)
+    ) {
+      this.playHitReaction(sprite);
+    }
 
     if (hp <= 0 && sprite === this.deather && !this.dead) {
       this.triggerDeath();
@@ -1223,6 +1619,8 @@ class GameScene extends Phaser.Scene {
       !this.controlsEnabled ||
       this.gameOver ||
       this.kameActive ||
+      this.catActive ||
+      this.camelActive ||
       !this.ai ||
       !this.fighter2
     ) {
@@ -1539,6 +1937,42 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}Jump`);
   }
 
+  applyJumpForward(c, sprite) {
+    if (sprite.texture.key !== c.jumpForwardSheet) {
+      sprite.setTexture(c.jumpForwardSheet);
+      sprite.setOrigin(0.5, c.jumpForwardOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.jumpForwardSourceH);
+    }
+    sprite.play(`${c.key}JumpForward`);
+  }
+
+  applyGuard(c, sprite) {
+    if (sprite.texture.key !== c.guardSheet) {
+      sprite.setTexture(c.guardSheet);
+      sprite.setOrigin(0.5, c.guardOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.guardSourceH);
+    }
+    sprite.play(`${c.key}Guard`);
+  }
+
+  applyGuardHold(c, sprite) {
+    if (sprite.texture.key !== c.guardSheet) {
+      sprite.setTexture(c.guardSheet);
+      sprite.setOrigin(0.5, c.guardOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.guardSourceH);
+    }
+    sprite.play(`${c.key}GuardHold`);
+  }
+
+  applyGuardDown(c, sprite) {
+    if (sprite.texture.key !== c.guardSheet) {
+      sprite.setTexture(c.guardSheet);
+      sprite.setOrigin(0.5, c.guardOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.guardSourceH);
+    }
+    sprite.play(`${c.key}GuardDown`);
+  }
+
   applyBackflip(c, sprite) {
     if (sprite.texture.key !== c.backflipSheet) {
       sprite.setTexture(c.backflipSheet);
@@ -1596,9 +2030,31 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}Taunt`);
   }
 
-  playJumpArc(total = JUMP_DURATION_MS, opts = {}) {
-    const sprite = this.walker;
-    const c = this.walkChar;
+  playHitReaction(sprite) {
+    const c = sprite === this.fighter1 ? this.p1Char : this.p2Char;
+    if (!c || !c.hitSheet || !sprite.anims) {
+      return;
+    }
+    sprite.hitPlaying = true;
+    if (sprite === this.walker) {
+      this.punching = false;
+      this.taunting = false;
+      this.walkerMoving = false;
+    }
+    if (sprite.texture.key !== c.hitSheet) {
+      sprite.setTexture(c.hitSheet);
+      sprite.setOrigin(0.5, c.hitOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.hitSourceH);
+    }
+    sprite.play(`${c.key}Hit`);
+  }
+
+  playJumpArc(
+    total = JUMP_DURATION_MS,
+    opts = {},
+    sprite = this.walker,
+    c = this.walkChar
+  ) {
     sprite.y = this.groundY;
     const amount =
       opts.lift != null
@@ -1655,6 +2111,341 @@ class GameScene extends Phaser.Scene {
     ctx.fillStyle = grd;
     ctx.fillRect(0, 0, size, size);
     canvas.refresh();
+  }
+
+  playGabiAttack() {
+    this.catActive = true;
+    this.catHitDone = false;
+    this.walkerMoving = false;
+    this.punching = false;
+    this.taunting = false;
+
+    const c = this.catChar;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+
+    this.cameras.main.flash(200, 140, 255, 180);
+    this.cameras.main.shake(340, 0.008);
+
+    if (c.gabiSound && this.sound.get(c.gabiSound)) {
+      this.sound.play(c.gabiSound);
+    }
+
+    const dim = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x06030f)
+      .setOrigin(0)
+      .setDepth(60)
+      .setAlpha(0);
+    this.tweens.add({ targets: dim, alpha: 0.7, duration: 160 });
+
+    const rays = this.add.container(cx, cy).setDepth(61);
+    const g = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    g.fillStyle(0x00ff88, 0.45);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      g.slice(0, 0, 480, a, a + 0.16, false);
+      g.fillPath();
+    }
+    rays.add(g);
+    this.tweens.add({
+      targets: rays,
+      angle: 360,
+      duration: 4200,
+      repeat: -1
+    });
+
+    const img = this.add.image(cx, cy, c.gabiInvocation).setDepth(62);
+    const targetScale = Math.min(920 / img.width, 640 / img.height);
+    img.setScale(0.1);
+    this.tweens.add({
+      targets: img,
+      scale: targetScale,
+      duration: 260,
+      ease: 'Back.easeOut'
+    });
+    this.tweens.add({
+      targets: img,
+      angle: { from: -3, to: 3 },
+      duration: 60,
+      yoyo: true,
+      repeat: 12,
+      ease: 'Sine.easeInOut'
+    });
+
+    const txt = this.add
+      .text(cx, cy + 322, 'GABI ATTACK', {
+        fontFamily: 'monospace',
+        fontSize: '76px',
+        fontStyle: 'bold',
+        color: '#ffe600'
+      })
+      .setOrigin(0.5)
+      .setDepth(65)
+      .setLetterSpacing(4)
+      .setScale(0.2)
+      .setAlpha(0);
+    txt.setStroke('#ff2d95', 10);
+    this.tweens.add({
+      targets: txt,
+      scale: 1.12,
+      alpha: 1,
+      duration: 240,
+      delay: 160,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({ targets: txt, scale: 1, duration: 180 });
+      }
+    });
+
+    const parts = [dim, rays, img, txt];
+    this.time.delayedCall(CAT_INTRO_MS, () => {
+      this.tweens.add({
+        targets: parts,
+        alpha: 0,
+        duration: 260,
+        onComplete: () => {
+          this.tweens.killTweensOf(rays);
+          parts.forEach((o) => o.destroy());
+        }
+      });
+      this.spawnCat();
+    });
+  }
+
+  spawnCat() {
+    const c = this.catChar;
+    const dir = this.specialer.mustFaceRight ? 1 : -1;
+    const startX = this.specialer.x + dir * 40;
+    const cat = this.add.sprite(startX, this.groundY, c.gabiSheet);
+    cat.setOrigin(0.5, c.gabiOriginY);
+    cat.setScale(CAT_TARGET_H / c.gabiSourceH);
+    cat.setFlipX(dir === 1);
+    cat.setDepth(16);
+    cat.play(`${c.key}Gabi`);
+
+    const endX = dir === 1 ? this.scale.width + 150 : -150;
+    const dur = (Math.abs(endX - startX) / CAT_SPEED) * 1000;
+    const opp = this.opponentOf(this.specialer);
+
+    let lastX = startX;
+    const timer = this.time.addEvent({
+      delay: 40,
+      loop: true,
+      callback: () => {
+        if (!cat.active) {
+          timer.remove();
+          return;
+        }
+        const lo = Math.min(lastX, cat.x) - 30;
+        const hi = Math.max(lastX, cat.x) + 30;
+        lastX = cat.x;
+        if (!this.catHitDone && opp.x >= lo && opp.x <= hi) {
+          this.catHitDone = true;
+          this.damageFighter(opp, KAME_DAMAGE, this.specialer);
+          this.cameras.main.shake(220, 0.01);
+          const burst = this.add
+            .particles(opp.x, this.groundY - 90, 'spark', {
+              lifespan: 450,
+              speed: { min: 150, max: 420 },
+              scale: { start: 1, end: 0 },
+              alpha: { start: 1, end: 0 },
+              blendMode: 'ADD',
+              tint: [0xffffff, 0xff8a00, 0xffe600],
+              emitting: false
+            })
+            .setDepth(23);
+          burst.explode(26, opp.x, this.groundY - 90);
+          this.time.delayedCall(600, () => burst.destroy());
+        }
+      }
+    });
+
+    this.tweens.add({
+      targets: cat,
+      x: endX,
+      duration: dur,
+      ease: 'Linear',
+      onComplete: () => {
+        timer.remove();
+        cat.destroy();
+        this.catActive = false;
+      }
+    });
+
+    this.time.delayedCall(dur + 400, () => {
+      timer.remove();
+      if (cat.active) {
+        cat.destroy();
+      }
+      this.catActive = false;
+    });
+  }
+
+  playTravelAttack() {
+    this.camelActive = true;
+    this.camelHitDone = false;
+    this.walkerMoving = false;
+    this.punching = false;
+    this.taunting = false;
+
+    const c = this.camelChar;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+
+    this.cameras.main.flash(200, 255, 220, 140);
+    this.cameras.main.shake(340, 0.008);
+
+    if (c.specialSound && this.sound.get(c.specialSound)) {
+      this.sound.play(c.specialSound);
+    }
+
+    const dim = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x06030f)
+      .setOrigin(0)
+      .setDepth(60)
+      .setAlpha(0);
+    this.tweens.add({ targets: dim, alpha: 0.7, duration: 160 });
+
+    const rays = this.add.container(cx, cy).setDepth(61);
+    const g = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    g.fillStyle(0xffd166, 0.45);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      g.slice(0, 0, 480, a, a + 0.16, false);
+      g.fillPath();
+    }
+    rays.add(g);
+    this.tweens.add({
+      targets: rays,
+      angle: 360,
+      duration: 4200,
+      repeat: -1
+    });
+
+    const img = this.add.image(cx, cy, c.specialInvocation).setDepth(62);
+    const targetScale = Math.min(560 / img.width, 620 / img.height);
+    img.setScale(0.1);
+    this.tweens.add({
+      targets: img,
+      scale: targetScale,
+      duration: 260,
+      ease: 'Back.easeOut'
+    });
+    this.tweens.add({
+      targets: img,
+      angle: { from: -3, to: 3 },
+      duration: 60,
+      yoyo: true,
+      repeat: 12,
+      ease: 'Sine.easeInOut'
+    });
+
+    const txt = this.add
+      .text(cx, cy + 322, c.specialText || 'TRAVEL ATTACK', {
+        fontFamily: 'monospace',
+        fontSize: '76px',
+        fontStyle: 'bold',
+        color: '#ffe600'
+      })
+      .setOrigin(0.5)
+      .setDepth(65)
+      .setLetterSpacing(4)
+      .setScale(0.2)
+      .setAlpha(0);
+    txt.setStroke('#ff8a00', 10);
+    this.tweens.add({
+      targets: txt,
+      scale: 1.12,
+      alpha: 1,
+      duration: 240,
+      delay: 160,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({ targets: txt, scale: 1, duration: 180 });
+      }
+    });
+
+    const parts = [dim, rays, img, txt];
+    this.time.delayedCall(CAT_INTRO_MS, () => {
+      this.tweens.add({
+        targets: parts,
+        alpha: 0,
+        duration: 260,
+        onComplete: () => {
+          this.tweens.killTweensOf(rays);
+          parts.forEach((o) => o.destroy());
+        }
+      });
+      this.launchCamel();
+    });
+  }
+
+  launchCamel() {
+    const c = this.camelChar;
+    const sprite = this.cameler;
+    if (!sprite) {
+      this.camelActive = false;
+      return;
+    }
+
+    if (sprite.texture.key !== c.specialSheet) {
+      sprite.setTexture(c.specialSheet);
+      sprite.setOrigin(0.5, c.specialOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.specialSourceH);
+    }
+    sprite.play(`${c.key}Special`);
+
+    const opp = this.opponentOf(sprite);
+    const dir = opp.x >= sprite.x ? 1 : -1;
+    const dist = c.specialDash != null ? c.specialDash : 150;
+    const target = Phaser.Math.Clamp(sprite.x + dir * dist, WALK_MIN_X, WALK_MAX_X);
+
+    let lastX = sprite.x;
+    const timer = this.time.addEvent({
+      delay: 40,
+      loop: true,
+      callback: () => {
+        if (!sprite.active) {
+          timer.remove();
+          return;
+        }
+        const lo = Math.min(lastX, sprite.x) - 90;
+        const hi = Math.max(lastX, sprite.x) + 90;
+        lastX = sprite.x;
+        if (!this.camelHitDone && opp.x >= lo && opp.x <= hi) {
+          this.camelHitDone = true;
+          this.damageFighter(opp, KAME_DAMAGE, sprite);
+          this.cameras.main.shake(220, 0.01);
+          const burst = this.add
+            .particles(opp.x, this.groundY - 90, 'spark', {
+              lifespan: 450,
+              speed: { min: 150, max: 420 },
+              scale: { start: 1, end: 0 },
+              alpha: { start: 1, end: 0 },
+              blendMode: 'ADD',
+              tint: [0xffffff, 0xffd166, 0xff8a00],
+              emitting: false
+            })
+            .setDepth(23);
+          burst.explode(26, opp.x, this.groundY - 90);
+          this.time.delayedCall(600, () => burst.destroy());
+        }
+      }
+    });
+
+    this.tweens.add({
+      targets: sprite,
+      x: target,
+      duration: CAMEL_DASH_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        timer.remove();
+        this.time.delayedCall(200, () => {
+          this.applyIdle(c, sprite);
+          this.camelActive = false;
+        });
+      }
+    });
   }
 
   playKamehameha() {
@@ -1836,6 +2627,128 @@ class GameScene extends Phaser.Scene {
     this.cameras.main.shake(200, 0.008);
   }
 
+  updateP2(delta) {
+    const c = this.p2walkChar;
+    const sprite = this.fighter2;
+    if (!c || !sprite || this.gameOver || this.kameActive || this.catActive || this.camelActive) {
+      return;
+    }
+    const st = this.p2state;
+    const k = this.p2keys;
+    const stunned = this.isInHitstun(sprite) || sprite.hitPlaying;
+    const dt = delta / 1000;
+
+    if (st.kneeling) {
+      if (!k.K.isDown && !st.kneelStanding) {
+        st.kneelStanding = true;
+        st.walkMoving = false;
+        this.applyKneelUp(c, sprite);
+      }
+      return;
+    }
+    if (st.kneelStanding) {
+      return;
+    }
+    if (sprite.hitPlaying) {
+      return;
+    }
+
+    if (this.updateGuard(sprite)) {
+      return;
+    }
+
+    const left = !stunned && k.J.isDown;
+    const right = !stunned && k.L.isDown;
+
+    if (st.jumping) {
+      if (st.backflipActive) {
+        sprite.x = Phaser.Math.Clamp(
+          sprite.x + st.backflipDir * BACKFLIP_SPEED * dt,
+          WALK_MIN_X,
+          WALK_MAX_X
+        );
+      } else if (st.jumpDir) {
+        sprite.x = Phaser.Math.Clamp(
+          sprite.x + st.jumpDir * JUMP_SPEED * dt,
+          WALK_MIN_X,
+          WALK_MAX_X
+        );
+      }
+      return;
+    }
+
+    if (c.kneelSheet && !stunned && k.K.isDown) {
+      st.kneeling = true;
+      st.walkMoving = false;
+      this.applyKneelDown(c, sprite);
+      return;
+    }
+
+    if (!stunned && Phaser.Input.Keyboard.JustDown(k.I)) {
+      const facingRight = sprite.mustFaceRight;
+      const goingBack = (facingRight && left) || (!facingRight && right);
+
+      if (c.backflipSheet && goingBack) {
+        st.jumping = true;
+        st.backflipActive = true;
+        st.jumpDir = 0;
+        st.backflipDir = right ? 1 : -1;
+        st.walkMoving = false;
+        this.applyBackflip(c, sprite);
+        this.playJumpArc(
+          BACKFLIP_DURATION_MS,
+          {
+            lift: c.backflipLift,
+            peakFrac: c.backflipPeakFrac,
+            landFrac: c.backflipLandFrac
+          },
+          sprite,
+          c
+        );
+        this.time.delayedCall(
+          BACKFLIP_DURATION_MS * (c.backflipLandFrac || 0.639),
+          () => {
+            st.backflipActive = false;
+          }
+        );
+        return;
+      }
+
+      if (c.jumpSheet || c.jumpForwardSheet) {
+        st.jumping = true;
+        st.backflipActive = false;
+        st.jumpDir = right ? 1 : left ? -1 : 0;
+        st.walkMoving = false;
+        const forward = facingRight ? right : left;
+        if (forward && c.jumpForwardSheet) {
+          this.applyJumpForward(c, sprite);
+        } else {
+          this.applyJump(c, sprite);
+        }
+        this.playJumpArc(c.jumpDurationMs || JUMP_DURATION_MS, {}, sprite, c);
+        return;
+      }
+    }
+
+    if (left || right) {
+      const dir = right ? 1 : -1;
+      const facingRight = sprite.mustFaceRight;
+      const forward = dir === 1 ? facingRight : !facingRight;
+      sprite.x = Phaser.Math.Clamp(
+        sprite.x + dir * WALK_SPEED * dt,
+        WALK_MIN_X,
+        WALK_MAX_X
+      );
+      if (c.walkSheet) {
+        this.applyWalk(c, sprite, forward);
+      }
+      st.walkMoving = true;
+    } else if (st.walkMoving) {
+      this.applyIdle(c, sprite);
+      st.walkMoving = false;
+    }
+  }
+
   update(_, delta) {
     if (!this.controlsEnabled) {
       return;
@@ -1843,9 +2756,12 @@ class GameScene extends Phaser.Scene {
 
     this.resolveFighterCollision();
     this.updateFacing();
-    this.updateAI(delta);
+    if (this.aiEnabled) {
+      this.updateAI(delta);
+    }
+    this.updateP2(delta);
 
-    if (!this.walker || this.kameActive) {
+    if (!this.walker || this.kameActive || this.catActive) {
       return;
     }
 
@@ -1853,10 +2769,44 @@ class GameScene extends Phaser.Scene {
     const walkerStunned = this.isInHitstun(this.walker);
     const puncherStunned = this.puncher ? this.isInHitstun(this.puncher) : false;
     const taunterStunned = this.taunter ? this.isInHitstun(this.taunter) : false;
-    const kamerStunned = this.kamer ? this.isInHitstun(this.kamer) : false;
+    const kamerStunned = this.specialer ? this.isInHitstun(this.specialer) : false;
 
     this.updateSpecial(delta, walkerStunned);
     if (this.channel) {
+      return;
+    }
+
+    if (this.walker.hitPlaying) {
+      return;
+    }
+
+    if (this.updateGuard(this.walker)) {
+      return;
+    }
+
+    const free =
+      !walkerStunned &&
+      !this.jumping &&
+      !this.punching &&
+      !this.kicking &&
+      !this.taunting &&
+      !this.kneeling &&
+      !this.kneelStanding;
+    if (free) {
+      if (this.p1Char.hitSheet && Phaser.Input.Keyboard.JustDown(this.keys.H)) {
+        this.walkerMoving = false;
+        this.playHitReaction(this.walker);
+        return;
+      }
+      if (this.taunter && Phaser.Input.Keyboard.JustDown(this.keys.B)) {
+        this.taunting = true;
+        this.walkerMoving = false;
+        this.applyTaunt(this.tauntChar, this.taunter);
+        return;
+      }
+    }
+
+    if (this.taunting && this.taunter === this.walker) {
       return;
     }
 
@@ -1897,13 +2847,16 @@ class GameScene extends Phaser.Scene {
     }
 
     if (this.jumping) {
+      const airborne = this.walker.y < this.groundY - 1;
       if (this.backflipActive) {
-        this.walker.x = Phaser.Math.Clamp(
-          this.walker.x + this.backflipDir * BACKFLIP_SPEED * dt,
-          WALK_MIN_X,
-          WALK_MAX_X
-        );
-      } else if (this.jumpDir) {
+        if (airborne) {
+          this.walker.x = Phaser.Math.Clamp(
+            this.walker.x + this.backflipDir * BACKFLIP_SPEED * dt,
+            WALK_MIN_X,
+            WALK_MAX_X
+          );
+        }
+      } else if (this.jumpDir && airborne) {
         this.walker.x = Phaser.Math.Clamp(
           this.walker.x + this.jumpDir * JUMP_SPEED * dt,
           WALK_MIN_X,
@@ -1933,7 +2886,8 @@ class GameScene extends Phaser.Scene {
     if (
       !walkerStunned &&
       !walkerBusy &&
-      Phaser.Input.Keyboard.JustDown(this.keys.SPACE)
+      (Phaser.Input.Keyboard.JustDown(this.keys.SPACE) ||
+        Phaser.Input.Keyboard.JustDown(this.keys.W))
     ) {
       const facingRight = this.walker.mustFaceRight;
       const goingBack = (facingRight && left) || (!facingRight && right);
@@ -1961,15 +2915,20 @@ class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (this.walkChar.jumpSheet) {
+      if (this.walkChar.jumpSheet || this.walkChar.jumpForwardSheet) {
         this.punching = false;
         this.taunting = false;
         this.jumping = true;
         this.backflipActive = false;
         this.jumpDir = right ? 1 : left ? -1 : 0;
         this.walkerMoving = false;
-        this.applyJump(this.walkChar, this.walker);
-        this.playJumpArc();
+        const forward = facingRight ? right : left;
+        if (forward && this.walkChar.jumpForwardSheet) {
+          this.applyJumpForward(this.walkChar, this.walker);
+        } else {
+          this.applyJump(this.walkChar, this.walker);
+        }
+        this.playJumpArc(this.walkChar.jumpDurationMs || JUMP_DURATION_MS);
         return;
       }
     }
@@ -1988,7 +2947,7 @@ class GameScene extends Phaser.Scene {
     }
 
     if (
-      this.kameChar &&
+      this.specialer &&
       !kamerStunned &&
       Phaser.Input.Keyboard.JustDown(this.keys.T)
     ) {
@@ -1996,7 +2955,13 @@ class GameScene extends Phaser.Scene {
         this.specialCharge = 0;
         this.updateSpecialBar();
         this.stopChannel();
-        this.playKamehameha();
+        if (this.kameChar) {
+          this.playKamehameha();
+        } else if (this.catChar) {
+          this.playGabiAttack();
+        } else if (this.camelChar) {
+          this.playTravelAttack();
+        }
       }
       return;
     }
