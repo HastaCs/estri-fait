@@ -137,6 +137,12 @@ class GameScene extends Phaser.Scene {
           frameHeight: c.specialFrameH
         });
       }
+      if (c.transformSheet && !this.textures.exists(c.transformSheet)) {
+        this.load.spritesheet(c.transformSheet, c.transformSheetPath, {
+          frameWidth: c.transformFrameW,
+          frameHeight: c.transformFrameH
+        });
+      }
       if (c.specialSound && !this.cache.audio.exists(c.specialSound)) {
         this.load.audio(c.specialSound, c.specialSoundPath);
       }
@@ -329,6 +335,17 @@ class GameScene extends Phaser.Scene {
       }
       if (c.specialSound && !this.sound.get(c.specialSound)) {
         this.sound.add(c.specialSound, { volume: 0.6 });
+      }
+      if (c.transformSheet && !this.anims.exists(`${c.key}TransformIdle`)) {
+        this.anims.create({
+          key: `${c.key}TransformIdle`,
+          frames: this.anims.generateFrameNumbers(c.transformSheet, {
+            start: 0,
+            end: c.transformFrames - 1
+          }),
+          frameRate: c.transformIdleFrameRate || 20,
+          repeat: -1
+        });
       }
       if (c.gabiSound && !this.sound.get(c.gabiSound)) {
         this.sound.add(c.gabiSound, { volume: 0.8 });
@@ -542,12 +559,16 @@ class GameScene extends Phaser.Scene {
     this.cater = this.catChar ? this.fighter1 : null;
     this.camelChar = p1.travelAttack ? p1 : null;
     this.cameler = this.camelChar ? this.fighter1 : null;
-    this.specialer = this.kamer || this.cater || this.cameler;
-    this.specialChar = this.kameChar || this.catChar || this.camelChar;
+    this.transformChar = p1.transformAttack ? p1 : null;
+    this.transformer = this.transformChar ? this.fighter1 : null;
+    this.specialer = this.kamer || this.cater || this.cameler || this.transformer;
+    this.specialChar = this.kameChar || this.catChar || this.camelChar || this.transformChar;
     this.catActive = false;
     this.catHitDone = false;
     this.camelActive = false;
     this.camelHitDone = false;
+    this.transformed = false;
+    this.transformActive = false;
 
     this.guardChar = p1.guardSheet ? p1 : null;
     this.p2guardChar = p2.guardSheet ? p2 : null;
@@ -951,7 +972,7 @@ class GameScene extends Phaser.Scene {
   }
 
   updateSpecial(delta, walkerStunned) {
-    if (!this.specialer || this.gameOver || this.kameActive || this.catActive || this.camelActive) {
+    if (!this.specialer || this.gameOver || this.kameActive || this.catActive || this.camelActive || this.transformActive) {
       this.stopChannel();
       return;
     }
@@ -1251,7 +1272,7 @@ class GameScene extends Phaser.Scene {
 
   isAttacking(sprite) {
     if (sprite === this.fighter1) {
-      return this.punching || this.kicking || this.kameActive || this.catActive || this.camelActive;
+      return this.punching || this.kicking || this.kameActive || this.catActive || this.camelActive || this.transformActive;
     }
     if (sprite === this.fighter2 && this.p2state) {
       return !!(this.p2state.punching || this.p2state.kicking);
@@ -1621,6 +1642,7 @@ class GameScene extends Phaser.Scene {
       this.kameActive ||
       this.catActive ||
       this.camelActive ||
+      this.transformActive ||
       !this.ai ||
       !this.fighter2
     ) {
@@ -1906,13 +1928,19 @@ class GameScene extends Phaser.Scene {
   }
 
   applyIdle(c, sprite) {
-    if (sprite.texture.key !== c.sheet) {
-      sprite.setTexture(c.sheet);
-      sprite.setOrigin(0.5, c.originY);
-      sprite.setScale(FIGHTER_TARGET_H / c.sourceH);
+    const transform =
+      this.transformed && c.transformSheet && sprite === this.walker;
+    const sheet = transform ? c.transformSheet : c.sheet;
+    const originY = transform ? c.transformOriginY : c.originY;
+    const sourceH = transform ? c.transformSourceH : c.sourceH;
+    const idleKey = transform ? `${c.key}TransformIdle` : `${c.key}Idle`;
+    if (sprite.texture.key !== sheet) {
+      sprite.setTexture(sheet);
+      sprite.setOrigin(0.5, originY);
+      sprite.setScale(FIGHTER_TARGET_H / sourceH);
     }
-    if (!sprite.anims.isPlaying || sprite.anims.currentAnim.key !== `${c.key}Idle`) {
-      sprite.play(`${c.key}Idle`);
+    if (!sprite.anims.isPlaying || sprite.anims.currentAnim.key !== idleKey) {
+      sprite.play(idleKey);
     }
   }
 
@@ -2448,6 +2476,120 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  playTransformAttack() {
+    this.transformActive = true;
+    this.walkerMoving = false;
+    this.punching = false;
+    this.taunting = false;
+
+    const c = this.transformChar;
+    const cx = this.scale.width / 2;
+    const cy = this.scale.height / 2;
+
+    this.cameras.main.flash(220, 180, 0, 0);
+    this.cameras.main.shake(360, 0.01);
+
+    const dim = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0x06030f)
+      .setOrigin(0)
+      .setDepth(60)
+      .setAlpha(0);
+    this.tweens.add({ targets: dim, alpha: 0.75, duration: 160 });
+
+    const rays = this.add.container(cx, cy).setDepth(61);
+    const g = this.add.graphics().setBlendMode(Phaser.BlendModes.ADD);
+    g.fillStyle(0xff2d2d, 0.4);
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      g.slice(0, 0, 480, a, a + 0.16, false);
+      g.fillPath();
+    }
+    rays.add(g);
+    this.tweens.add({
+      targets: rays,
+      angle: 360,
+      duration: 4200,
+      repeat: -1
+    });
+
+    const img = this.add.image(cx, cy, c.specialInvocation).setDepth(62);
+    const targetScale = Math.min(560 / img.width, 620 / img.height);
+    img.setScale(0.1);
+    this.tweens.add({
+      targets: img,
+      scale: targetScale,
+      duration: 260,
+      ease: 'Back.easeOut'
+    });
+    this.tweens.add({
+      targets: img,
+      angle: { from: -3, to: 3 },
+      duration: 60,
+      yoyo: true,
+      repeat: 12,
+      ease: 'Sine.easeInOut'
+    });
+
+    const txt = this.add
+      .text(cx, cy + 322, c.specialText || 'RAGE ATTACK', {
+        fontFamily: 'monospace',
+        fontSize: '76px',
+        fontStyle: 'bold',
+        color: '#ffe600'
+      })
+      .setOrigin(0.5)
+      .setDepth(65)
+      .setLetterSpacing(4)
+      .setScale(0.2)
+      .setAlpha(0);
+    txt.setStroke('#ff2d2d', 10);
+    this.tweens.add({
+      targets: txt,
+      scale: 1.12,
+      alpha: 1,
+      duration: 240,
+      delay: 160,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        this.tweens.add({ targets: txt, scale: 1, duration: 180 });
+      }
+    });
+
+    const parts = [dim, rays, img, txt];
+    this.time.delayedCall(CAT_INTRO_MS, () => {
+      this.tweens.add({
+        targets: parts,
+        alpha: 0,
+        duration: 260,
+        onComplete: () => {
+          this.tweens.killTweensOf(rays);
+          parts.forEach((o) => o.destroy());
+        }
+      });
+      this.applyTransform();
+      this.time.delayedCall(500, () => {
+        this.transformActive = false;
+      });
+    });
+  }
+
+  applyTransform() {
+    this.transformed = true;
+    const c = this.transformChar;
+    const sprite = this.transformer;
+    if (!sprite) {
+      return;
+    }
+    if (sprite.texture.key !== c.transformSheet) {
+      sprite.setTexture(c.transformSheet);
+      sprite.setOrigin(0.5, c.transformOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.transformSourceH);
+    }
+    sprite.play(`${c.key}TransformIdle`);
+    this.cameras.main.flash(200, 120, 0, 0);
+    this.cameras.main.shake(300, 0.008);
+  }
+
   playKamehameha() {
     this.kameActive = true;
     this.walkerMoving = false;
@@ -2630,7 +2772,7 @@ class GameScene extends Phaser.Scene {
   updateP2(delta) {
     const c = this.p2walkChar;
     const sprite = this.fighter2;
-    if (!c || !sprite || this.gameOver || this.kameActive || this.catActive || this.camelActive) {
+    if (!c || !sprite || this.gameOver || this.kameActive || this.catActive || this.camelActive || this.transformActive) {
       return;
     }
     const st = this.p2state;
@@ -2761,7 +2903,7 @@ class GameScene extends Phaser.Scene {
     }
     this.updateP2(delta);
 
-    if (!this.walker || this.kameActive || this.catActive) {
+    if (!this.walker || this.kameActive || this.catActive || this.camelActive || this.transformActive) {
       return;
     }
 
@@ -2961,6 +3103,8 @@ class GameScene extends Phaser.Scene {
           this.playGabiAttack();
         } else if (this.camelChar) {
           this.playTravelAttack();
+        } else if (this.transformChar) {
+          this.playTransformAttack();
         }
       }
       return;
