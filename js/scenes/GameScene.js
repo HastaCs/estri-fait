@@ -47,9 +47,34 @@ const CHARGE_SFX_FADE_MS = 300;
 const HITBOXES = {
   idle: { w: 90, h: 280, ox: 0, oy: -280 },
   punch: { w: 100, h: 90, ox: 50, oy: -250 },
+  transformPunch: { w: 200, h: 90, ox: 100, oy: -250 },
   kick: { w: 120, h: 80, ox: 55, oy: -150 },
   crouch: { w: 100, h: 160, ox: 0, oy: -160 }
 };
+
+const HIT_FX = {
+  sheet: 'hitFxSheet',
+  path: 'assets/hits/hit_sheet.png',
+  frameW: 472,
+  frameH: 497,
+  frameRate: 18,
+  targetH: 200,
+  colors: [
+    'hitWhite',
+    'hitYellow',
+    'hitOrange',
+    'hitRed',
+    'hitCyan',
+    'hitMagenta',
+    'hitGreen'
+  ]
+};
+
+const HIT_SOUNDS = ['punch1Sfx', 'punch2Sfx'];
+
+const TEST_P2_JORGE = false;
+const TEST_NO_DAMAGE = true;
+const TEST_AUTO_GUARD = true;
 
 const AI_SPEED = 160;
 const AI_APPROACH_DIST = 350;
@@ -81,7 +106,12 @@ class GameScene extends Phaser.Scene {
     this.startData = data || {};
     this.bgIndex = this.startData.bg != null ? this.startData.bg : 0;
     const i1 = this.startData.p1 != null ? this.startData.p1 : 0;
-    const i2 = this.startData.p2 != null ? this.startData.p2 : 1;
+    const i2 = TEST_P2_JORGE
+      ? CHARACTERS.findIndex((c) => c.key === 'jorge')
+      : this.startData.p2 != null
+      ? this.startData.p2
+      : 1;
+    this.p2Index = i2;
     this.fighterChars =
       i1 === i2 ? [CHARACTERS[i1]] : [CHARACTERS[i1], CHARACTERS[i2]];
   }
@@ -100,6 +130,18 @@ class GameScene extends Phaser.Scene {
         this.load.image(b.key, b.path);
       }
     });
+    if (!this.textures.exists(HIT_FX.sheet)) {
+      this.load.spritesheet(HIT_FX.sheet, HIT_FX.path, {
+        frameWidth: HIT_FX.frameW,
+        frameHeight: HIT_FX.frameH
+      });
+    }
+    if (!this.cache.audio.exists('punch1Sfx')) {
+      this.load.audio('punch1Sfx', 'assets/hits/punch1.mp3');
+    }
+    if (!this.cache.audio.exists('punch2Sfx')) {
+      this.load.audio('punch2Sfx', 'assets/hits/punch2.mp3');
+    }
     this.fighterChars.forEach((c) => {
       if (!this.textures.exists(c.sheet)) {
         this.load.spritesheet(c.sheet, c.sheetPath, {
@@ -154,6 +196,28 @@ class GameScene extends Phaser.Scene {
           frameWidth: c.transformFrameW,
           frameHeight: c.transformFrameH
         });
+      }
+      if (c.transformPunchSheet && !this.textures.exists(c.transformPunchSheet)) {
+        this.load.spritesheet(c.transformPunchSheet, c.transformPunchSheetPath, {
+          frameWidth: c.transformPunchFrameW,
+          frameHeight: c.transformPunchFrameH
+        });
+      }
+      if (c.transformRunSheet && !this.textures.exists(c.transformRunSheet)) {
+        this.load.spritesheet(c.transformRunSheet, c.transformRunSheetPath, {
+          frameWidth: c.transformRunFrameW,
+          frameHeight: c.transformRunFrameH
+        });
+      }
+      if (c.transformGuardSheet && !this.textures.exists(c.transformGuardSheet)) {
+        this.load.spritesheet(
+          c.transformGuardSheet,
+          c.transformGuardSheetPath,
+          {
+            frameWidth: c.transformGuardFrameW,
+            frameHeight: c.transformGuardFrameH
+          }
+        );
       }
       if (c.specialSound && !this.cache.audio.exists(c.specialSound)) {
         this.load.audio(c.specialSound, c.specialSoundPath);
@@ -224,6 +288,8 @@ class GameScene extends Phaser.Scene {
     this.p2X = 940;
     this.controlsEnabled = false;
     this.walkerMoving = false;
+    this.testP2Guard = false;
+    this.testGuardNext = 0;
     this.hitstopUntil = 0;
     if (this.tweens) {
       this.tweens.timeScale = 1;
@@ -233,7 +299,13 @@ class GameScene extends Phaser.Scene {
     }
 
     const p1 = CHARACTERS[data && data.p1 != null ? data.p1 : 0];
-    const p2 = CHARACTERS[data && data.p2 != null ? data.p2 : 1];
+    const p2 = CHARACTERS[
+      this.p2Index != null
+        ? this.p2Index
+        : data && data.p2 != null
+        ? data.p2
+        : 1
+    ];
     this.p1Char = p1;
     this.p2Char = p2;
 
@@ -249,6 +321,19 @@ class GameScene extends Phaser.Scene {
         repeat: -1
       });
     }
+
+    HIT_FX.colors.forEach((key, i) => {
+      if (!this.anims.exists(key)) {
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(HIT_FX.sheet, {
+            frames: [i * 2, i * 2 + 1]
+          }),
+          frameRate: HIT_FX.frameRate,
+          repeat: 0
+        });
+      }
+    });
 
     this.fighterChars.forEach((c) => {
       if (!this.anims.exists(`${c.key}Idle`)) {
@@ -330,6 +415,48 @@ class GameScene extends Phaser.Scene {
             end: c.guardFrames - 1
           }),
           frameRate: c.guardDownFrameRate || 20,
+          repeat: 0
+        });
+      }
+      if (
+        c.transformGuardSheet &&
+        !this.anims.exists(`${c.key}TransformGuard`)
+      ) {
+        const holdStart =
+          c.transformGuardHoldStart != null ? c.transformGuardHoldStart : 0;
+        const holdEnd =
+          c.transformGuardHoldEnd != null
+            ? c.transformGuardHoldEnd
+            : c.transformGuardFrames - 1;
+        this.anims.create({
+          key: `${c.key}TransformGuard`,
+          frames: this.anims.generateFrameNumbers(c.transformGuardSheet, {
+            start: 0,
+            end: holdStart
+          }),
+          frameRate: c.transformGuardUpFrameRate || 40,
+          repeat: 0
+        });
+        this.anims.create({
+          key: `${c.key}TransformGuardHold`,
+          frames: this.anims.generateFrameNumbers(c.transformGuardSheet, {
+            start: holdStart,
+            end: holdEnd
+          }),
+          frameRate: c.transformGuardHoldFrameRate || 8,
+          repeat: -1,
+          yoyo: true
+        });
+        const downFrames = [];
+        for (let f = holdStart; f >= 0; f--) {
+          downFrames.push(f);
+        }
+        this.anims.create({
+          key: `${c.key}TransformGuardDown`,
+          frames: this.anims.generateFrameNumbers(c.transformGuardSheet, {
+            frames: downFrames
+          }),
+          frameRate: c.transformGuardDownFrameRate || 40,
           repeat: 0
         });
       }
@@ -455,6 +582,36 @@ class GameScene extends Phaser.Scene {
           repeat: 0
         });
       }
+      if (c.transformPunchSheet && !this.anims.exists(`${c.key}TransformPunch`)) {
+        this.anims.create({
+          key: `${c.key}TransformPunch`,
+          frames: this.anims.generateFrameNumbers(c.transformPunchSheet, {
+            start: 0,
+            end: c.transformPunchFrames - 1
+          }),
+          frameRate:
+            c.transformPunchFrameRate ||
+            c.transformPunchFrames / (PUNCH_DURATION_MS / 1000),
+          repeat: 0
+        });
+      }
+      if (c.transformRunSheet && !this.anims.exists(`${c.key}TransformRun`)) {
+        const runStart =
+          c.transformRunStartFrame != null ? c.transformRunStartFrame : 0;
+        const runEnd =
+          c.transformRunEndFrame != null
+            ? c.transformRunEndFrame
+            : c.transformRunFrames - 1;
+        this.anims.create({
+          key: `${c.key}TransformRun`,
+          frames: this.anims.generateFrameNumbers(c.transformRunSheet, {
+            start: runStart,
+            end: runEnd
+          }),
+          frameRate: c.transformRunFrameRate || 24,
+          repeat: -1
+        });
+      }
       if (c.punchSound && !this.sound.get(c.punchSound)) {
         this.sound.add(c.punchSound, { volume: 0.5 });
       }
@@ -576,6 +733,10 @@ class GameScene extends Phaser.Scene {
     this.punchStartTime = null;
     this.kickKey = this.kickChar ? `${this.kickChar.key}Kick` : null;
     this.punchKey = this.punchChar ? `${this.punchChar.key}Punch` : null;
+    this.transformPunchKey =
+      this.punchChar && this.punchChar.transformPunchSheet
+        ? `${this.punchChar.key}TransformPunch`
+        : null;
     this.tauntKey = this.tauntChar ? `${this.tauntChar.key}Taunt` : null;
 
     this.kameChar = p1.kamehameha ? p1 : null;
@@ -629,11 +790,12 @@ class GameScene extends Phaser.Scene {
           (anim.key === this.jumpKey ||
             anim.key === this.jumpForwardKey ||
             anim.key === this.backflipKey) &&
-          this.jumping
+          (this.jumping || this.jumpLanded)
         ) {
           this.jumping = false;
           this.backflipActive = false;
           this.jumpDir = 0;
+          this.jumpLanded = false;
           this.tweens.killTweensOf(this.walker);
           this.walker.y = this.groundY;
           this.applyIdle(this.walkChar, this.walker);
@@ -667,7 +829,10 @@ class GameScene extends Phaser.Scene {
 
     if (this.puncher) {
       this.puncher.on('animationcomplete', (anim) => {
-        if (anim.key === this.punchKey && this.punching) {
+        if (
+          (anim.key === this.punchKey || anim.key === this.transformPunchKey) &&
+          this.punching
+        ) {
           this.punching = false;
           this.blendToIdle(this.punchChar, this.puncher);
         }
@@ -776,8 +941,10 @@ class GameScene extends Phaser.Scene {
       });
     });
 
-    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,W,F,T,Q,V,H,B');
+    this.keys = this.input.keyboard.addKeys('A,D,S,SPACE,W,F,T,Q,V,H,B,G');
     this.p2keys = this.input.keyboard.addKeys('I,J,K,L');
+    this.debugHitboxes = false;
+    this.hitboxGfx = this.add.graphics().setDepth(1000);
 
     this.playIntro();
   }
@@ -808,6 +975,43 @@ class GameScene extends Phaser.Scene {
       return 'crouch';
     }
     return 'idle';
+  }
+
+  contactPoint(hit, hurt) {
+    const inter = Phaser.Geom.Rectangle.Intersection(hit, hurt);
+    if (!inter || inter.width <= 0 || inter.height <= 0) {
+      return null;
+    }
+    return { x: inter.centerX, y: inter.centerY };
+  }
+
+  drawDebugHitboxes() {
+    if (!this.hitboxGfx) {
+      return;
+    }
+    this.hitboxGfx.clear();
+    if (!this.debugHitboxes || !this.fighter1 || !this.fighter2) {
+      return;
+    }
+    const stroke = (rect, color) => {
+      this.hitboxGfx.lineStyle(2, color, 1);
+      this.hitboxGfx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    };
+    stroke(this.getHitbox(this.fighter1, this.hurtState(this.fighter1)), 0x33ff66);
+    stroke(this.getHitbox(this.fighter2, this.hurtState(this.fighter2)), 0x33ff66);
+    if (this.punchChar && this.walker) {
+      const state =
+        this.transformed && this.punchChar.transformPunchSheet
+          ? 'transformPunch'
+          : 'punch';
+      stroke(this.getHitbox(this.walker, state), 0xff3366);
+    }
+    if (this.punchChar && this.fighter2) {
+      stroke(this.getHitbox(this.fighter2, 'punch'), 0xff3366);
+    }
+    if (this.kickChar && this.walker) {
+      stroke(this.getHitbox(this.walker, 'kick'), 0xffaa00);
+    }
   }
 
   resolveFighterCollision() {
@@ -1330,7 +1534,21 @@ class GameScene extends Phaser.Scene {
   }
 
   guardCharOf(sprite) {
-    return sprite === this.fighter1 ? this.guardChar : this.p2guardChar;
+    if (sprite === this.fighter1) {
+      if (this.guardChar) {
+        return this.guardChar;
+      }
+      if (
+        this.transformed &&
+        sprite === this.walker &&
+        this.p1Char &&
+        this.p1Char.transformGuardSheet
+      ) {
+        return this.p1Char;
+      }
+      return null;
+    }
+    return this.p2guardChar;
   }
 
   holdBack(sprite) {
@@ -1341,6 +1559,9 @@ class GameScene extends Phaser.Scene {
       return sprite.mustFaceRight ? this.keys.A.isDown : this.keys.D.isDown;
     }
     if (sprite === this.fighter2) {
+      if (TEST_AUTO_GUARD && this.testP2Guard) {
+        return true;
+      }
       return sprite.mustFaceRight ? this.p2keys.J.isDown : this.p2keys.L.isDown;
     }
     return false;
@@ -1379,7 +1600,9 @@ class GameScene extends Phaser.Scene {
       }
     }
     const opp = this.opponentOf(sprite);
-    if (!this.isAttacking(opp)) {
+    const lingering =
+      sprite.guardHoldUntil != null && this.time.now < sprite.guardHoldUntil;
+    if (!lingering && !this.isAttacking(opp)) {
       return false;
     }
     if (Math.abs(sprite.x - opp.x) > GUARD_RANGE) {
@@ -1441,11 +1664,6 @@ class GameScene extends Phaser.Scene {
       duration: KNOCKBACK_MS,
       ease: 'Quad.easeOut'
     });
-  }
-
-  flashHit(sprite, blocking) {
-    sprite.setTintFill(blocking ? 0x66ccff : 0xffffff);
-    this.time.delayedCall(blocking ? 120 : 140, () => sprite.clearTint());
   }
 
   squashHit(sprite) {
@@ -1528,24 +1746,61 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(500, () => burst.destroy());
   }
 
-  playImpact(attacker, defender, blocking) {
+  spawnHitFx(x, y) {
+    if (!this.textures.exists(HIT_FX.sheet)) {
+      return;
+    }
+    const key = Phaser.Utils.Array.GetRandom(HIT_FX.colors);
+    const fx = this.add.sprite(x, y, HIT_FX.sheet);
+    fx.setScale(
+      (HIT_FX.targetH / HIT_FX.frameH) * Phaser.Math.FloatBetween(0.85, 1.12)
+    );
+    fx.setDepth(26);
+    fx.setBlendMode(Phaser.BlendModes.ADD);
+    fx.setAngle(Phaser.Math.Between(-35, 35));
+    fx.play(key);
+    fx.once('animationcomplete', () => fx.destroy());
+    this.time.delayedCall(400, () => {
+      if (fx.active) {
+        fx.destroy();
+      }
+    });
+  }
+
+  playHitSound(blocking) {
+    const key = Phaser.Utils.Array.GetRandom(HIT_SOUNDS);
+    if (!this.cache.audio.exists(key)) {
+      return;
+    }
+    const rate = blocking
+      ? Phaser.Math.FloatBetween(0.62, 0.78)
+      : Phaser.Math.FloatBetween(0.95, 1.12);
+    const detune = blocking
+      ? Phaser.Math.Between(-260, -110)
+      : Phaser.Math.Between(-130, 130);
+    this.sound.play(key, {
+      rate,
+      detune,
+      volume: blocking ? 0.55 : 0.7
+    });
+  }
+
+  playImpact(attacker, defender, blocking, contact) {
     this.hitstop(blocking ? BLOCK_HITSTOP_MS : HITSTOP_MS);
     if (this.cameras && this.cameras.main) {
       this.cameras.main.shake(blocking ? 55 : 60, blocking ? 0.003 : 0.005);
     }
     const dir =
       Math.sign(defender.x - attacker.x) || (attacker.mustFaceRight ? 1 : -1);
-    const x = attacker.x + dir * 100;
-    const y = this.groundY - 230;
+    const x = contact ? contact.x : attacker.x + dir * 100;
+    const y = contact ? contact.y : this.groundY - 230;
+    this.spawnHitFx(x, y);
     if (blocking) {
       this.blockSparks(x, y);
     } else {
-      this.impactSpark((x + defender.x) / 2, y);
+      this.impactSpark(x, y);
     }
-    const c = attacker === this.fighter1 ? this.p1Char : this.p2Char;
-    if (c && c.punchSound && this.sound.get(c.punchSound)) {
-      this.sound.play(c.punchSound);
-    }
+    this.playHitSound(blocking);
   }
 
   blendToIdle(c, sprite) {
@@ -1582,7 +1837,7 @@ class GameScene extends Phaser.Scene {
 
     if (isP1) {
       this.health1 = Math.max(0, this.health1 - dmg);
-    } else {
+    } else if (!TEST_NO_DAMAGE) {
       this.health2 = Math.max(0, this.health2 - dmg);
     }
     const hp = isP1 ? this.health1 : this.health2;
@@ -1596,12 +1851,14 @@ class GameScene extends Phaser.Scene {
     this.applyKnockback(sprite, this.hitDirection(sprite, attacker), knockback);
     sprite.hitstunUntil =
       this.time.now + (blocking ? BLOCK_HITSTUN_MS : HITSTUN_MS);
-    this.flashHit(sprite, blocking);
+    if (blocking) {
+      sprite.guardHoldUntil = this.time.now + 400;
+    }
     this.squashHit(sprite);
     this.updateHealthBars(false);
 
     if (attacker) {
-      this.playImpact(attacker, sprite, blocking);
+      this.playImpact(attacker, sprite, blocking, opts.contact);
     }
 
     if (
@@ -1752,13 +2009,35 @@ class GameScene extends Phaser.Scene {
     return sprite === this.fighter1 ? this.fighter2 : this.fighter1;
   }
 
+  punchHitDelay() {
+    const c = this.punchChar;
+    if (
+      this.transformed &&
+      c &&
+      this.puncher === this.walker &&
+      c.transformPunchSheet &&
+      c.transformPunchHitMs != null
+    ) {
+      return c.transformPunchHitMs;
+    }
+    return PUNCH_HIT_MS;
+  }
+
   punchHit(puncher) {
     const opp = this.opponentOf(puncher);
-    const hit = this.getHitbox(puncher, 'punch');
+    const state =
+      this.transformed &&
+      puncher === this.walker &&
+      this.punchChar &&
+      this.punchChar.transformPunchSheet
+        ? 'transformPunch'
+        : 'punch';
+    const hit = this.getHitbox(puncher, state);
     const hurt = this.getHitbox(opp, this.hurtState(opp));
     if (Phaser.Geom.Intersects.RectangleToRectangle(hit, hurt)) {
       this.damageFighter(opp, PUNCH_DAMAGE, puncher, {
-        knockback: LIGHT_KNOCKBACK
+        knockback: LIGHT_KNOCKBACK,
+        contact: this.contactPoint(hit, hurt)
       });
     }
   }
@@ -1768,7 +2047,9 @@ class GameScene extends Phaser.Scene {
     const hit = this.getHitbox(kicker, 'kick');
     const hurt = this.getHitbox(opp, this.hurtState(opp));
     if (Phaser.Geom.Intersects.RectangleToRectangle(hit, hurt)) {
-      this.damageFighter(opp, PUNCH_DAMAGE, kicker);
+      this.damageFighter(opp, PUNCH_DAMAGE, kicker, {
+        contact: this.contactPoint(hit, hurt)
+      });
     }
   }
 
@@ -1918,7 +2199,9 @@ class GameScene extends Phaser.Scene {
     const hit = this.getHitbox(attacker, state);
     const hurt = this.getHitbox(opp, this.hurtState(opp));
     if (Phaser.Geom.Intersects.RectangleToRectangle(hit, hurt)) {
-      this.damageFighter(opp, PUNCH_DAMAGE, attacker);
+      this.damageFighter(opp, PUNCH_DAMAGE, attacker, {
+        contact: this.contactPoint(hit, hurt)
+      });
     }
   }
 
@@ -2054,7 +2337,8 @@ class GameScene extends Phaser.Scene {
       ease: 'Sine.easeIn',
       onComplete: () => {
         this.airKicking = false;
-        this.airKickFalling = false;
+    this.airKickFalling = false;
+    this.jumpLanded = false;
         this.kicking = false;
         this.jumping = false;
         this.backflipActive = false;
@@ -2082,12 +2366,24 @@ class GameScene extends Phaser.Scene {
   }
 
   applyWalk(c, sprite, forward) {
-    if (sprite.texture.key !== c.walkSheet) {
-      sprite.setTexture(c.walkSheet);
-      sprite.setOrigin(0.5, c.walkOriginY);
-      sprite.setScale(FIGHTER_TARGET_H / c.walkSourceH);
+    const transform =
+      forward &&
+      this.transformed &&
+      c.transformRunSheet &&
+      sprite === this.walker;
+    const sheet = transform ? c.transformRunSheet : c.walkSheet;
+    const originY = transform ? c.transformRunOriginY : c.walkOriginY;
+    const sourceH = transform ? c.transformRunSourceH : c.walkSourceH;
+    const key = transform
+      ? `${c.key}TransformRun`
+      : forward
+      ? `${c.key}Walk`
+      : `${c.key}WalkBack`;
+    if (sprite.texture.key !== sheet) {
+      sprite.setTexture(sheet);
+      sprite.setOrigin(0.5, originY);
+      sprite.setScale(FIGHTER_TARGET_H / sourceH);
     }
-    const key = forward ? `${c.key}Walk` : `${c.key}WalkBack`;
     if (!sprite.anims.isPlaying || sprite.anims.currentAnim.key !== key) {
       sprite.play(key);
     }
@@ -2111,31 +2407,55 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}JumpForward`);
   }
 
-  applyGuard(c, sprite) {
-    if (sprite.texture.key !== c.guardSheet) {
-      sprite.setTexture(c.guardSheet);
-      sprite.setOrigin(0.5, c.guardOriginY);
-      sprite.setScale(FIGHTER_TARGET_H / c.guardSourceH);
+  guardSpec(c, sprite) {
+    if (this.transformed && sprite === this.walker && c.transformGuardSheet) {
+      return {
+        sheet: c.transformGuardSheet,
+        originY: c.transformGuardOriginY,
+        sourceH: c.transformGuardSourceH,
+        up: `${c.key}TransformGuard`,
+        hold: `${c.key}TransformGuardHold`,
+        down: `${c.key}TransformGuardDown`
+      };
     }
-    sprite.play(`${c.key}Guard`);
+    return {
+      sheet: c.guardSheet,
+      originY: c.guardOriginY,
+      sourceH: c.guardSourceH,
+      up: `${c.key}Guard`,
+      hold: `${c.key}GuardHold`,
+      down: `${c.key}GuardDown`
+    };
+  }
+
+  applyGuard(c, sprite) {
+    const g = this.guardSpec(c, sprite);
+    if (sprite.texture.key !== g.sheet) {
+      sprite.setTexture(g.sheet);
+      sprite.setOrigin(0.5, g.originY);
+      sprite.setScale(FIGHTER_TARGET_H / g.sourceH);
+    }
+    sprite.play(g.up);
   }
 
   applyGuardHold(c, sprite) {
-    if (sprite.texture.key !== c.guardSheet) {
-      sprite.setTexture(c.guardSheet);
-      sprite.setOrigin(0.5, c.guardOriginY);
-      sprite.setScale(FIGHTER_TARGET_H / c.guardSourceH);
+    const g = this.guardSpec(c, sprite);
+    if (sprite.texture.key !== g.sheet) {
+      sprite.setTexture(g.sheet);
+      sprite.setOrigin(0.5, g.originY);
+      sprite.setScale(FIGHTER_TARGET_H / g.sourceH);
     }
-    sprite.play(`${c.key}GuardHold`);
+    sprite.play(g.hold);
   }
 
   applyGuardDown(c, sprite) {
-    if (sprite.texture.key !== c.guardSheet) {
-      sprite.setTexture(c.guardSheet);
-      sprite.setOrigin(0.5, c.guardOriginY);
-      sprite.setScale(FIGHTER_TARGET_H / c.guardSourceH);
+    const g = this.guardSpec(c, sprite);
+    if (sprite.texture.key !== g.sheet) {
+      sprite.setTexture(g.sheet);
+      sprite.setOrigin(0.5, g.originY);
+      sprite.setScale(FIGHTER_TARGET_H / g.sourceH);
     }
-    sprite.play(`${c.key}GuardDown`);
+    sprite.play(g.down);
   }
 
   applyBackflip(c, sprite) {
@@ -2175,12 +2495,18 @@ class GameScene extends Phaser.Scene {
   }
 
   applyPunch(c, sprite) {
-    if (sprite.texture.key !== c.punchSheet) {
-      sprite.setTexture(c.punchSheet);
-      sprite.setOrigin(0.5, c.punchOriginY);
-      sprite.setScale(FIGHTER_TARGET_H / c.punchSourceH);
+    const transform =
+      this.transformed && c.transformPunchSheet && sprite === this.walker;
+    const sheet = transform ? c.transformPunchSheet : c.punchSheet;
+    const originY = transform ? c.transformPunchOriginY : c.punchOriginY;
+    const sourceH = transform ? c.transformPunchSourceH : c.punchSourceH;
+    const key = transform ? `${c.key}TransformPunch` : `${c.key}Punch`;
+    if (sprite.texture.key !== sheet) {
+      sprite.setTexture(sheet);
+      sprite.setOrigin(0.5, originY);
+      sprite.setScale(FIGHTER_TARGET_H / sourceH);
     }
-    sprite.play(`${c.key}Punch`);
+    sprite.play(key);
   }
 
   applyTaunt(c, sprite) {
@@ -3040,6 +3366,15 @@ class GameScene extends Phaser.Scene {
   }
 
   update(_, delta) {
+    if (Phaser.Input.Keyboard.JustDown(this.keys.G)) {
+      this.debugHitboxes = !this.debugHitboxes;
+    }
+    this.drawDebugHitboxes();
+    if (TEST_AUTO_GUARD && this.time.now >= this.testGuardNext) {
+      this.testP2Guard = !this.testP2Guard;
+      this.testGuardNext = this.time.now + 1600;
+    }
+
     if (!this.controlsEnabled) {
       return;
     }
@@ -3140,6 +3475,20 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    if (
+      this.jumping &&
+      !this.backflipActive &&
+      this.jumpLandAt != null &&
+      this.time.now >= this.jumpLandAt
+    ) {
+      this.airKicking = false;
+      this.kicking = false;
+      this.jumping = false;
+      this.jumpDir = 0;
+      this.punching = false;
+      this.jumpLanded = true;
+    }
+
     if (this.jumping) {
       const airborne = this.walker.y < this.groundY - 1;
       if (this.backflipActive) {
@@ -3189,6 +3538,7 @@ class GameScene extends Phaser.Scene {
         this.taunting = false;
         this.jumping = true;
         this.backflipActive = true;
+        this.jumpLanded = false;
         this.jumpDir = 0;
         this.backflipDir = right ? 1 : -1;
         this.walkerMoving = false;
@@ -3198,6 +3548,9 @@ class GameScene extends Phaser.Scene {
           peakFrac: this.walkChar.backflipPeakFrac,
           landFrac: this.walkChar.backflipLandFrac
         });
+        this.jumpLandAt =
+          this.time.now +
+          BACKFLIP_DURATION_MS * (this.walkChar.backflipLandFrac || 0.639);
         this.time.delayedCall(
           BACKFLIP_DURATION_MS * (this.walkChar.backflipLandFrac || 0.639),
           () => {
@@ -3212,6 +3565,7 @@ class GameScene extends Phaser.Scene {
         this.taunting = false;
         this.jumping = true;
         this.backflipActive = false;
+        this.jumpLanded = false;
         this.jumpDir = right ? 1 : left ? -1 : 0;
         this.walkerMoving = false;
         const forward = facingRight ? right : left;
@@ -3221,6 +3575,10 @@ class GameScene extends Phaser.Scene {
           this.applyJump(this.walkChar, this.walker);
         }
         this.playJumpArc(this.walkChar.jumpDurationMs || JUMP_DURATION_MS);
+        this.jumpLandAt =
+          this.time.now +
+          (this.walkChar.jumpDurationMs || JUMP_DURATION_MS) *
+            (this.walkChar.jumpLandFrac != null ? this.walkChar.jumpLandFrac : 1);
         return;
       }
     }
@@ -3234,7 +3592,7 @@ class GameScene extends Phaser.Scene {
       this.punching = true;
       this.punchStartTime = this.time.now;
       this.applyPunch(this.punchChar, this.puncher);
-      this.time.delayedCall(PUNCH_HIT_MS, () => this.punchHit(this.puncher));
+      this.time.delayedCall(this.punchHitDelay(), () => this.punchHit(this.puncher));
       return;
     }
 
@@ -3274,8 +3632,15 @@ class GameScene extends Phaser.Scene {
       const facingRight = this.walker.mustFaceRight;
       const forward = dir === 1 ? facingRight : !facingRight;
 
+      const walkSpeed =
+        forward &&
+        this.transformed &&
+        this.walkChar &&
+        this.walkChar.transformSpeed
+          ? WALK_SPEED * this.walkChar.transformSpeed
+          : WALK_SPEED;
       this.walker.x = Phaser.Math.Clamp(
-        this.walker.x + dir * WALK_SPEED * dt,
+        this.walker.x + dir * walkSpeed * dt,
         WALK_MIN_X,
         WALK_MAX_X
       );

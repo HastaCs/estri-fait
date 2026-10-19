@@ -213,7 +213,7 @@ def cutout(img):
     return out
 
 
-def build(video, out, base=None, remove_white=False):
+def build(video, out, base=None, remove_white=False, flip=False, align_feet=False, erode=2, dilate=0):
     base = base or A
     with tempfile.TemporaryDirectory() as d:
         tmp = Path(d)
@@ -228,10 +228,32 @@ def build(video, out, base=None, remove_white=False):
         maxx = max(maxx, bb[2])
         maxy = max(maxy, bb[3])
     frames = [im.crop((minx, miny, maxx, maxy)) for im in full]
+    if flip:
+        frames = [fr.transpose(Image.FLIP_LEFT_RIGHT) for fr in frames]
+
+    leg_ref = None
+    if align_feet:
+        refs = []
+        for fr in frames:
+            bb = fr.getchannel("A").getbbox()
+            if not bb:
+                continue
+            y1 = bb[3]
+            h = bb[3] - bb[1]
+            band = fr.crop((0, max(0, y1 - max(1, int(0.10 * h))), fr.width, y1))
+            b = band.getchannel("A").getbbox()
+            if b:
+                refs.append((b[0] + b[2]) / 2)
+        if refs:
+            leg_ref = sorted(refs)[len(refs) // 2]
 
     max_w = max(f.width for f in frames)
     max_h = max(f.height for f in frames)
-    fw = max_w + 2 * PAD
+    if leg_ref is not None:
+        half = max(leg_ref, max_w - leg_ref)
+        fw = int(2 * (half + PAD))
+    else:
+        fw = max_w + 2 * PAD
     fh = max_h + 2 * PAD
     baseline = fh - PAD
 
@@ -239,22 +261,34 @@ def build(video, out, base=None, remove_white=False):
     for i, fr in enumerate(frames):
         c = i % COLS
         r = i // COLS
-        x = c * fw + (fw - fr.width) // 2
-        y = r * fh + baseline - fr.height
-        sheet.paste(fr, (x, y), fr)
+        if leg_ref is not None:
+            cell = Image.new("RGBA", (fw, fh), (0, 0, 0, 0))
+            cell.paste(fr, (int(fw / 2 - leg_ref), baseline - fr.height), fr)
+            sheet.paste(cell, (c * fw, r * fh), cell)
+        else:
+            x = c * fw + (fw - fr.width) // 2
+            y = r * fh + baseline - fr.height
+            sheet.paste(fr, (x, y), fr)
 
-    sheet = clean_video(sheet, remove_white=remove_white)
+    sheet = clean_video(sheet, remove_white=remove_white, erode=erode, dilate=dilate)
     (base / out).parent.mkdir(parents=True, exist_ok=True)
     sheet.save(base / out)
     print(f"{out}: frame={fw}x{fh} frames={len(frames)} originY={baseline / fh:.4f}")
 
 
-def clean_video(sheet, remove_white=False):
+def clean_video(sheet, remove_white=False, erode=2, dilate=0):
     if remove_white:
         sheet = remove_near_white(sheet)
+    if dilate:
+        sheet = imgclean.erode_alpha(sheet, erode)
+        sheet = imgclean.defringe(sheet, rounds=8)
+        sheet = imgclean.bleed_colors(sheet)
+        sheet = imgclean.dilate_alpha(sheet, dilate)
+        sheet = imgclean.bleed_colors(sheet)
+        return imgclean.smooth_alpha(sheet, radius=0.35)
     return imgclean.smooth_alpha(
         imgclean.bleed_colors(
-            imgclean.defringe(imgclean.erode_alpha(sheet, 2), rounds=8)
+            imgclean.defringe(imgclean.erode_alpha(sheet, erode), rounds=8)
         ),
         radius=0.35,
     )

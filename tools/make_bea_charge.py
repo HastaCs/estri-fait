@@ -56,11 +56,67 @@ def flood(removed, px, w, h, seeds, pred):
                     q.append((nx, ny))
 
 
+def remove_enclosed_gray(img, min_size=120):
+    """Borra los huecos grises encerrados (p. ej. entre las piernas)."""
+    w, h = img.size
+    px = img.load()
+    seen = bytearray(w * h)
+    for s in range(w * h):
+        if seen[s]:
+            continue
+        x0, y0 = s % w, s // w
+        if px[x0, y0][3] <= 128 or not is_gray(px[x0, y0]):
+            seen[s] = 1
+            continue
+        q = deque([s])
+        seen[s] = 1
+        comp = []
+        while q:
+            j = q.popleft()
+            comp.append(j)
+            x, y = j % w, j // w
+            for dx, dy in DIRS:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h:
+                    k = ny * w + nx
+                    if (
+                        not seen[k]
+                        and px[nx, ny][3] > 128
+                        and is_gray(px[nx, ny])
+                    ):
+                        seen[k] = 1
+                        q.append(k)
+        if len(comp) >= min_size:
+            for j in comp:
+                x, y = j % w, j // w
+                r, g, b, _ = px[x, y]
+                px[x, y] = (r, g, b, 0)
+    return img
+
+
+def tint_winds(img, color=(70, 180, 255)):
+    """Tine de azul los vientos (pixeles blancos claros)."""
+    w, h = img.size
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a < 8:
+                continue
+            if max(r, g, b) - min(r, g, b) <= 30 and (r + g + b) / 3 >= 210:
+                px[x, y] = (
+                    r * color[0] // 255,
+                    g * color[1] // 255,
+                    b * color[2] // 255,
+                    a,
+                )
+    return img
+
+
 def cutout(img):
     w, h = img.size
     px = img.load()
     removed = bytearray(w * h)
-
     edges = [(x, y) for x in range(w) for y in (0, h - 1)]
     edges += [(x, y) for y in range(h) for x in (0, w - 1)]
     flood(removed, px, w, h, edges, is_white)
@@ -88,9 +144,11 @@ def cutout(img):
     alpha.putdata([0 if removed[i] else 255 for i in range(w * h)])
     out = img.convert("RGBA")
     out.putalpha(alpha)
+    out = remove_enclosed_gray(out)
     out = imgclean.erode_alpha(out, 1)
     out = imgclean.bleed_colors(out)
-    return imgclean.smooth_alpha(out, radius=0.6)
+    out = imgclean.smooth_alpha(out, radius=0.6)
+    return tint_winds(out)
 
 
 def main():
