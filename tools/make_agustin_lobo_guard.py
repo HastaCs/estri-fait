@@ -19,7 +19,7 @@ OUT = BASE / "assets" / "agustin" / "transformacion" / "loboguard_sheet.png"
 def main():
     av.COLS = 6
     av.ROWS = 6
-    av.build(SRC, OUT.name, base=OUT.parent, flip=True, align_feet=True)
+    av.build(SRC, OUT.name, base=OUT.parent, align_feet=True)
 
 
 if __name__ == "__main__":

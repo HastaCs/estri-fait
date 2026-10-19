@@ -73,6 +73,7 @@ const HIT_FX = {
 const HIT_SOUNDS = ['punch1Sfx', 'punch2Sfx'];
 
 const TEST_P2_JORGE = false;
+const TEST_P2_TRANSFORM = true;
 const TEST_NO_DAMAGE = true;
 const TEST_AUTO_GUARD = true;
 
@@ -108,6 +109,8 @@ class GameScene extends Phaser.Scene {
     const i1 = this.startData.p1 != null ? this.startData.p1 : 0;
     const i2 = TEST_P2_JORGE
       ? CHARACTERS.findIndex((c) => c.key === 'jorge')
+      : TEST_P2_TRANSFORM
+      ? CHARACTERS.findIndex((c) => c.key === 'agustin')
       : this.startData.p2 != null
       ? this.startData.p2
       : 1;
@@ -216,6 +219,16 @@ class GameScene extends Phaser.Scene {
           {
             frameWidth: c.transformGuardFrameW,
             frameHeight: c.transformGuardFrameH
+          }
+        );
+      }
+      if (c.transformWalkSheet && !this.textures.exists(c.transformWalkSheet)) {
+        this.load.spritesheet(
+          c.transformWalkSheet,
+          c.transformWalkSheetPath,
+          {
+            frameWidth: c.transformWalkFrameW,
+            frameHeight: c.transformWalkFrameH
           }
         );
       }
@@ -458,6 +471,20 @@ class GameScene extends Phaser.Scene {
           }),
           frameRate: c.transformGuardDownFrameRate || 40,
           repeat: 0
+        });
+      }
+      if (c.transformWalkSheet && !this.anims.exists(`${c.key}TransformWalk`)) {
+        const walkFrames = [];
+        for (let f = c.transformWalkFrames - 1; f >= 0; f--) {
+          walkFrames.push(f);
+        }
+        this.anims.create({
+          key: `${c.key}TransformWalk`,
+          frames: this.anims.generateFrameNumbers(c.transformWalkSheet, {
+            frames: walkFrames
+          }),
+          frameRate: c.transformWalkFrameRate || 16,
+          repeat: -1
         });
       }
       if (c.backflipSheet && !this.anims.exists(`${c.key}Backflip`)) {
@@ -753,8 +780,12 @@ class GameScene extends Phaser.Scene {
     this.catHitDone = false;
     this.camelActive = false;
     this.camelHitDone = false;
-    this.transformed = false;
     this.transformActive = false;
+    this.fighter1.transformed = false;
+    this.fighter2.transformed = false;
+    if (TEST_P2_TRANSFORM) {
+      this.fighter2.transformed = true;
+    }
 
     this.guardChar = p1.guardSheet ? p1 : null;
     this.p2guardChar = p2.guardSheet ? p2 : null;
@@ -929,13 +960,24 @@ class GameScene extends Phaser.Scene {
 
     [this.fighter1, this.fighter2].forEach((sprite, i) => {
       const c = i === 0 ? p1 : p2;
-      if (!c.guardSheet) {
+      if (!c.guardSheet && !c.transformGuardSheet) {
         return;
       }
       sprite.on('animationcomplete', (anim) => {
-        if (anim.key === `${c.key}Guard` && sprite.guarding) {
-          sprite.play(`${c.key}GuardHold`);
-        } else if (anim.key === `${c.key}GuardDown`) {
+        const transformGuard = anim.key === `${c.key}TransformGuard`;
+        if (
+          (anim.key === `${c.key}Guard` || transformGuard) &&
+          sprite.guarding
+        ) {
+          sprite.play(
+            transformGuard
+              ? `${c.key}TransformGuardHold`
+              : `${c.key}GuardHold`
+          );
+        } else if (
+          anim.key === `${c.key}GuardDown` ||
+          anim.key === `${c.key}TransformGuardDown`
+        ) {
           this.applyIdle(c, sprite);
         }
       });
@@ -1001,7 +1043,9 @@ class GameScene extends Phaser.Scene {
     stroke(this.getHitbox(this.fighter2, this.hurtState(this.fighter2)), 0x33ff66);
     if (this.punchChar && this.walker) {
       const state =
-        this.transformed && this.punchChar.transformPunchSheet
+        this.walker &&
+        this.walker.transformed &&
+        this.punchChar.transformPunchSheet
           ? 'transformPunch'
           : 'punch';
       stroke(this.getHitbox(this.walker, state), 0xff3366);
@@ -1534,21 +1578,18 @@ class GameScene extends Phaser.Scene {
   }
 
   guardCharOf(sprite) {
-    if (sprite === this.fighter1) {
-      if (this.guardChar) {
-        return this.guardChar;
-      }
-      if (
-        this.transformed &&
-        sprite === this.walker &&
-        this.p1Char &&
-        this.p1Char.transformGuardSheet
-      ) {
-        return this.p1Char;
-      }
-      return null;
+    const c = sprite === this.fighter1 ? this.p1Char : this.p2Char;
+    if (c && c.guardSheet) {
+      return c;
     }
-    return this.p2guardChar;
+    if (
+      sprite.transformed &&
+      c &&
+      c.transformGuardSheet
+    ) {
+      return c;
+    }
+    return null;
   }
 
   holdBack(sprite) {
@@ -2012,9 +2053,9 @@ class GameScene extends Phaser.Scene {
   punchHitDelay() {
     const c = this.punchChar;
     if (
-      this.transformed &&
+      this.puncher &&
+      this.puncher.transformed &&
       c &&
-      this.puncher === this.walker &&
       c.transformPunchSheet &&
       c.transformPunchHitMs != null
     ) {
@@ -2026,8 +2067,7 @@ class GameScene extends Phaser.Scene {
   punchHit(puncher) {
     const opp = this.opponentOf(puncher);
     const state =
-      this.transformed &&
-      puncher === this.walker &&
+      puncher.transformed &&
       this.punchChar &&
       this.punchChar.transformPunchSheet
         ? 'transformPunch'
@@ -2349,8 +2389,7 @@ class GameScene extends Phaser.Scene {
   }
 
   applyIdle(c, sprite) {
-    const transform =
-      this.transformed && c.transformSheet && sprite === this.walker;
+    const transform = sprite.transformed && c.transformSheet;
     const sheet = transform ? c.transformSheet : c.sheet;
     const originY = transform ? c.transformOriginY : c.originY;
     const sourceH = transform ? c.transformSourceH : c.sourceH;
@@ -2366,24 +2405,28 @@ class GameScene extends Phaser.Scene {
   }
 
   applyWalk(c, sprite, forward) {
-    const transform =
-      forward &&
-      this.transformed &&
-      c.transformRunSheet &&
-      sprite === this.walker;
-    const sheet = transform ? c.transformRunSheet : c.walkSheet;
-    const originY = transform ? c.transformRunOriginY : c.walkOriginY;
-    const sourceH = transform ? c.transformRunSourceH : c.walkSourceH;
-    const key = transform
-      ? `${c.key}TransformRun`
-      : forward
-      ? `${c.key}Walk`
-      : `${c.key}WalkBack`;
-    if (sprite.texture.key !== sheet) {
-      sprite.setTexture(sheet);
-      sprite.setOrigin(0.5, originY);
-      sprite.setScale(FIGHTER_TARGET_H / sourceH);
+    if (sprite.transformed && (c.transformRunSheet || c.transformWalkSheet)) {
+      const backwards = !forward && c.transformWalkSheet;
+      const sheet = backwards ? c.transformWalkSheet : c.transformRunSheet;
+      const originY = backwards ? c.transformWalkOriginY : c.transformRunOriginY;
+      const sourceH = backwards ? c.transformWalkSourceH : c.transformRunSourceH;
+      const key = backwards ? `${c.key}TransformWalk` : `${c.key}TransformRun`;
+      if (sprite.texture.key !== sheet) {
+        sprite.setTexture(sheet);
+        sprite.setOrigin(0.5, originY);
+        sprite.setScale(FIGHTER_TARGET_H / sourceH);
+      }
+      if (!sprite.anims.isPlaying || sprite.anims.currentAnim.key !== key) {
+        sprite.play(key);
+      }
+      return;
     }
+    if (sprite.texture.key !== c.walkSheet) {
+      sprite.setTexture(c.walkSheet);
+      sprite.setOrigin(0.5, c.walkOriginY);
+      sprite.setScale(FIGHTER_TARGET_H / c.walkSourceH);
+    }
+    const key = forward ? `${c.key}Walk` : `${c.key}WalkBack`;
     if (!sprite.anims.isPlaying || sprite.anims.currentAnim.key !== key) {
       sprite.play(key);
     }
@@ -2408,7 +2451,7 @@ class GameScene extends Phaser.Scene {
   }
 
   guardSpec(c, sprite) {
-    if (this.transformed && sprite === this.walker && c.transformGuardSheet) {
+    if (sprite.transformed && c.transformGuardSheet) {
       return {
         sheet: c.transformGuardSheet,
         originY: c.transformGuardOriginY,
@@ -2496,7 +2539,7 @@ class GameScene extends Phaser.Scene {
 
   applyPunch(c, sprite) {
     const transform =
-      this.transformed && c.transformPunchSheet && sprite === this.walker;
+      sprite.transformed && c.transformPunchSheet;
     const sheet = transform ? c.transformPunchSheet : c.punchSheet;
     const originY = transform ? c.transformPunchOriginY : c.punchOriginY;
     const sourceH = transform ? c.transformPunchSourceH : c.punchSourceH;
@@ -3048,7 +3091,9 @@ class GameScene extends Phaser.Scene {
   }
 
   applyTransform() {
-    this.transformed = true;
+    if (this.transformer) {
+      this.transformer.transformed = true;
+    }
     const c = this.transformChar;
     const sprite = this.transformer;
     if (!sprite) {
@@ -3634,7 +3679,7 @@ class GameScene extends Phaser.Scene {
 
       const walkSpeed =
         forward &&
-        this.transformed &&
+        this.walker.transformed &&
         this.walkChar &&
         this.walkChar.transformSpeed
           ? WALK_SPEED * this.walkChar.transformSpeed
