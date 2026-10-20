@@ -220,6 +220,12 @@ class GameScene extends Phaser.Scene {
           }
         );
       }
+      if (c.transformJumpSheet && !this.textures.exists(c.transformJumpSheet)) {
+        this.load.spritesheet(c.transformJumpSheet, c.transformJumpSheetPath, {
+          frameWidth: c.transformJumpFrameW,
+          frameHeight: c.transformJumpFrameH
+        });
+      }
       if (c.transformRunSheet && !this.textures.exists(c.transformRunSheet)) {
         this.load.spritesheet(c.transformRunSheet, c.transformRunSheetPath, {
           frameWidth: c.transformRunFrameW,
@@ -612,6 +618,21 @@ class GameScene extends Phaser.Scene {
           repeat: 0
         });
       }
+      if (
+        c.kickSheet &&
+        c.airKickEndFrame != null &&
+        !this.anims.exists(`${c.key}AirKick`)
+      ) {
+        this.anims.create({
+          key: `${c.key}AirKick`,
+          frames: this.anims.generateFrameNumbers(c.kickSheet, {
+            start: 0,
+            end: c.airKickEndFrame
+          }),
+          frameRate: c.kickFrameRate || c.kickFrames / (KICK_DURATION_MS / 1000),
+          repeat: 0
+        });
+      }
       if (c.punchSheet && !this.anims.exists(`${c.key}Punch`)) {
         this.anims.create({
           key: `${c.key}Punch`,
@@ -653,6 +674,23 @@ class GameScene extends Phaser.Scene {
                 : c.transformPunchLeftFrames - 1
           }),
           frameRate: c.transformPunchLeftFrameRate || 55,
+          repeat: 0
+        });
+      }
+      if (
+        c.transformJumpSheet &&
+        !this.anims.exists(`${c.key}TransformJump`)
+      ) {
+        this.anims.create({
+          key: `${c.key}TransformJump`,
+          frames: this.anims.generateFrameNumbers(c.transformJumpSheet, {
+            start: 0,
+            end: (c.transformJumpFrames || 25) - 1
+          }),
+          frameRate:
+            c.transformJumpFrameRate ||
+            (c.transformJumpFrames || 25) /
+              ((c.transformJumpDurationMs || 1000) / 1000),
           repeat: 0
         });
       }
@@ -818,6 +856,10 @@ class GameScene extends Phaser.Scene {
     this.airKickFalling = false;
     this.punchStartTime = null;
     this.kickKey = this.kickChar ? `${this.kickChar.key}Kick` : null;
+    this.airKickKey =
+      this.kickChar && this.kickChar.airKickEndFrame != null
+        ? `${this.kickChar.key}AirKick`
+        : null;
     this.punchKey = this.punchChar ? `${this.punchChar.key}Punch` : null;
     this.transformPunchKey =
       this.punchChar && this.punchChar.transformPunchSheet
@@ -826,6 +868,10 @@ class GameScene extends Phaser.Scene {
     this.transformPunchLeftKey =
       this.punchChar && this.punchChar.transformPunchLeftSheet
         ? `${this.punchChar.key}TransformPunchLeft`
+        : null;
+    this.transformJumpKey =
+      this.walkChar && this.walkChar.transformJumpSheet
+        ? `${this.walkChar.key}TransformJump`
         : null;
     this.punchComboUntil = 0;
     this.punchComboNext = null;
@@ -886,7 +932,8 @@ class GameScene extends Phaser.Scene {
         if (
           (anim.key === this.jumpKey ||
             anim.key === this.jumpForwardKey ||
-            anim.key === this.backflipKey) &&
+            anim.key === this.backflipKey ||
+            anim.key === this.transformJumpKey) &&
           (this.jumping || this.jumpLanded)
         ) {
           this.jumping = false;
@@ -902,7 +949,7 @@ class GameScene extends Phaser.Scene {
           this.kneeling = false;
           this.applyIdle(this.kneelChar, this.kneeler);
         }
-        if (anim.key === this.kickKey && this.kicking) {
+        if ((anim.key === this.kickKey || anim.key === this.airKickKey) && this.kicking) {
           if (this.airKicking) {
             if (this.walker.y >= this.groundY - 1) {
               this.airKicking = false;
@@ -2545,6 +2592,15 @@ class GameScene extends Phaser.Scene {
   }
 
   applyJump(c, sprite) {
+    if (sprite.transformed && c.transformJumpSheet) {
+      if (sprite.texture.key !== c.transformJumpSheet) {
+        sprite.setTexture(c.transformJumpSheet);
+        sprite.setOrigin(0.5, c.transformJumpOriginY);
+        sprite.setScale(FIGHTER_TARGET_H / c.transformJumpSourceH);
+      }
+      sprite.play(`${c.key}TransformJump`);
+      return;
+    }
     if (sprite.texture.key !== c.jumpSheet) {
       sprite.setTexture(c.jumpSheet);
       sprite.setOrigin(0.5, c.jumpOriginY);
@@ -2554,6 +2610,15 @@ class GameScene extends Phaser.Scene {
   }
 
   applyJumpForward(c, sprite) {
+    if (sprite.transformed && c.transformJumpSheet) {
+      if (sprite.texture.key !== c.transformJumpSheet) {
+        sprite.setTexture(c.transformJumpSheet);
+        sprite.setOrigin(0.5, c.transformJumpOriginY);
+        sprite.setScale(FIGHTER_TARGET_H / c.transformJumpSourceH);
+      }
+      sprite.play(`${c.key}TransformJump`);
+      return;
+    }
     if (sprite.texture.key !== c.jumpForwardSheet) {
       sprite.setTexture(c.jumpForwardSheet);
       sprite.setOrigin(0.5, c.jumpForwardOriginY);
@@ -2640,13 +2705,15 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}KneelUp`);
   }
 
-  applyKick(c, sprite) {
+  applyKick(c, sprite, air) {
     if (sprite.texture.key !== c.kickSheet) {
       sprite.setTexture(c.kickSheet);
       sprite.setOrigin(0.5, c.kickOriginY);
       sprite.setScale(FIGHTER_TARGET_H / c.kickSourceH);
     }
-    sprite.play(`${c.key}Kick`);
+    sprite.play(
+      air && c.airKickEndFrame != null ? `${c.key}AirKick` : `${c.key}Kick`
+    );
   }
 
   applyPunch(c, sprite, combo) {
@@ -2715,6 +2782,8 @@ class GameScene extends Phaser.Scene {
     const amount =
       opts.lift != null
         ? opts.lift
+        : sprite.transformed && c.transformJumpArcInSheet
+        ? 0
         : c.jumpLift != null
         ? c.jumpLift
         : c.jumpArcInSheet
@@ -3699,7 +3768,7 @@ class GameScene extends Phaser.Scene {
       ) {
         this.kicking = true;
         this.airKicking = true;
-        this.applyKick(this.kickChar, this.kicker);
+        this.applyKick(this.kickChar, this.kicker, true);
         const kickHitMs =
           this.kickChar.kickHitMs != null ? this.kickChar.kickHitMs : KICK_HIT_MS;
         this.time.delayedCall(kickHitMs, () => this.kickHit(this.kicker));
@@ -3716,7 +3785,11 @@ class GameScene extends Phaser.Scene {
       const facingRight = this.walker.mustFaceRight;
       const goingBack = (facingRight && left) || (!facingRight && right);
 
-      if (this.walkChar.backflipSheet && goingBack) {
+      if (
+        this.walkChar.backflipSheet &&
+        goingBack &&
+        !(this.walker.transformed && this.walkChar.transformJumpSheet)
+      ) {
         this.punching = false;
         this.taunting = false;
         this.jumping = true;
@@ -3757,10 +3830,18 @@ class GameScene extends Phaser.Scene {
         } else {
           this.applyJump(this.walkChar, this.walker);
         }
-        this.playJumpArc(this.walkChar.jumpDurationMs || JUMP_DURATION_MS);
+        this.playJumpArc(
+          this.walker.transformed && this.walkChar.transformJumpSheet
+            ? this.walkChar.transformJumpDurationMs || JUMP_DURATION_MS
+            : this.walkChar.jumpDurationMs || JUMP_DURATION_MS
+        );
+        const jumpDur =
+          this.walker.transformed && this.walkChar.transformJumpSheet
+            ? this.walkChar.transformJumpDurationMs || JUMP_DURATION_MS
+            : this.walkChar.jumpDurationMs || JUMP_DURATION_MS;
         this.jumpLandAt =
           this.time.now +
-          (this.walkChar.jumpDurationMs || JUMP_DURATION_MS) *
+          jumpDur *
             (this.walkChar.jumpLandFrac != null ? this.walkChar.jumpLandFrac : 1);
         return;
       }
