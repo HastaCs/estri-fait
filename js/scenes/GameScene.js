@@ -828,6 +828,8 @@ class GameScene extends Phaser.Scene {
         ? `${this.punchChar.key}TransformPunchLeft`
         : null;
     this.punchComboUntil = 0;
+    this.punchComboNext = null;
+    this.punchWasLeft = false;
     this.tauntKey = this.tauntChar ? `${this.tauntChar.key}Taunt` : null;
 
     this.kameChar = p1.kamehameha ? p1 : null;
@@ -2187,6 +2189,7 @@ class GameScene extends Phaser.Scene {
         this.punchComboUntil =
           this.time.now +
           (this.punchChar.transformPunchComboMs || 700);
+        this.punchComboNext = this.punchWasLeft ? 'right' : 'left';
       }
     }
   }
@@ -3769,17 +3772,17 @@ class GameScene extends Phaser.Scene {
       punchOpen &&
       Phaser.Input.Keyboard.JustDown(this.keys.F)
     ) {
-      const combo =
-        this.time.now < this.punchComboUntil &&
-        this.punchChar.transformPunchLeftSheet;
-      if (combo) {
+      const comboActive = this.time.now < this.punchComboUntil;
+      const comboLeft = comboActive && this.punchComboNext === 'left';
+      if (comboActive) {
         this.punchComboUntil = 0;
       }
+      this.punchWasLeft = !!comboLeft;
       this.punching = true;
       this.punchStartTime = this.time.now;
-      this.applyPunch(this.punchChar, this.puncher, combo);
+      this.applyPunch(this.punchChar, this.puncher, comboLeft);
       this.time.delayedCall(
-        combo
+        comboLeft
           ? this.punchChar.transformPunchLeftHitMs || PUNCH_HIT_MS
           : this.punchHitDelay(),
         () => this.punchHit(this.puncher)

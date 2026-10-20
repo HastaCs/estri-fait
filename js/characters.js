@@ -291,7 +291,7 @@ const CHARACTERS = [
     transformPunchLeftFrameW: 256,
     transformPunchLeftFrameH: 256,
     transformPunchLeftOriginY: 0.9727,
-    transformPunchLeftSourceH: 250,
+    transformPunchLeftSourceH: 222,
     transformPunchLeftFrames: 25,
     transformPunchLeftStartFrame: 10,
     transformPunchLeftEndFrame: 24,
