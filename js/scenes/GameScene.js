@@ -226,6 +226,12 @@ class GameScene extends Phaser.Scene {
           frameHeight: c.transformJumpFrameH
         });
       }
+      if (c.transformKickSheet && !this.textures.exists(c.transformKickSheet)) {
+        this.load.spritesheet(c.transformKickSheet, c.transformKickSheetPath, {
+          frameWidth: c.transformKickFrameW,
+          frameHeight: c.transformKickFrameH
+        });
+      }
       if (c.transformRunSheet && !this.textures.exists(c.transformRunSheet)) {
         this.load.spritesheet(c.transformRunSheet, c.transformRunSheetPath, {
           frameWidth: c.transformRunFrameW,
@@ -694,6 +700,20 @@ class GameScene extends Phaser.Scene {
           repeat: 0
         });
       }
+      if (
+        c.transformKickSheet &&
+        !this.anims.exists(`${c.key}TransformKick`)
+      ) {
+        this.anims.create({
+          key: `${c.key}TransformKick`,
+          frames: this.anims.generateFrameNumbers(c.transformKickSheet, {
+            start: 0,
+            end: (c.transformKickFrames || 21) - 1
+          }),
+          frameRate: c.transformKickFrameRate || 40,
+          repeat: 0
+        });
+      }
       if (c.transformRunSheet && !this.anims.exists(`${c.key}TransformRun`)) {
         const runStart =
           c.transformRunStartFrame != null ? c.transformRunStartFrame : 0;
@@ -860,6 +880,10 @@ class GameScene extends Phaser.Scene {
       this.kickChar && this.kickChar.airKickEndFrame != null
         ? `${this.kickChar.key}AirKick`
         : null;
+    this.transformKickKey =
+      this.kickChar && this.kickChar.transformKickSheet
+        ? `${this.kickChar.key}TransformKick`
+        : null;
     this.punchKey = this.punchChar ? `${this.punchChar.key}Punch` : null;
     this.transformPunchKey =
       this.punchChar && this.punchChar.transformPunchSheet
@@ -949,7 +973,10 @@ class GameScene extends Phaser.Scene {
           this.kneeling = false;
           this.applyIdle(this.kneelChar, this.kneeler);
         }
-        if ((anim.key === this.kickKey || anim.key === this.airKickKey) && this.kicking) {
+        if ((anim.key === this.kickKey ||
+            anim.key === this.airKickKey ||
+            anim.key === this.transformKickKey) &&
+          this.kicking) {
           if (this.airKicking) {
             if (this.walker.y >= this.groundY - 1) {
               this.airKicking = false;
@@ -2706,6 +2733,15 @@ class GameScene extends Phaser.Scene {
   }
 
   applyKick(c, sprite, air) {
+    if (sprite.transformed && c.transformKickSheet) {
+      if (sprite.texture.key !== c.transformKickSheet) {
+        sprite.setTexture(c.transformKickSheet);
+        sprite.setOrigin(0.5, c.transformKickOriginY);
+        sprite.setScale(FIGHTER_TARGET_H / c.transformKickSourceH);
+      }
+      sprite.play(`${c.key}TransformKick`);
+      return;
+    }
     if (sprite.texture.key !== c.kickSheet) {
       sprite.setTexture(c.kickSheet);
       sprite.setOrigin(0.5, c.kickOriginY);
