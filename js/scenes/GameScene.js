@@ -1,6 +1,7 @@
 const WALK_SPEED = 320;
-const WALK_MIN_X = 100;
-const WALK_MAX_X = 1180;
+const WORLD_PAD = 340;
+const WALK_MIN_X = -WORLD_PAD + 80;
+const WALK_MAX_X = 1280 + WORLD_PAD - 80;
 const FIGHTER_BODY_W = 110;
 const FIGHTER_BODY_H = 300;
 const JUMP_DURATION_MS = 750;
@@ -72,8 +73,8 @@ const HIT_FX = {
 
 const HIT_SOUNDS = ['punch1Sfx', 'punch2Sfx'];
 
-const TEST_P2_JORGE = false;
-const TEST_P2_TRANSFORM = true;
+const TEST_P2_JORGE = true;
+const TEST_P2_TRANSFORM = false;
 const TEST_NO_DAMAGE = true;
 const TEST_AUTO_GUARD = true;
 
@@ -205,6 +206,19 @@ class GameScene extends Phaser.Scene {
           frameWidth: c.transformPunchFrameW,
           frameHeight: c.transformPunchFrameH
         });
+      }
+      if (
+        c.transformPunchLeftSheet &&
+        !this.textures.exists(c.transformPunchLeftSheet)
+      ) {
+        this.load.spritesheet(
+          c.transformPunchLeftSheet,
+          c.transformPunchLeftSheetPath,
+          {
+            frameWidth: c.transformPunchLeftFrameW,
+            frameHeight: c.transformPunchLeftFrameH
+          }
+        );
       }
       if (c.transformRunSheet && !this.textures.exists(c.transformRunSheet)) {
         this.load.spritesheet(c.transformRunSheet, c.transformRunSheetPath, {
@@ -592,7 +606,7 @@ class GameScene extends Phaser.Scene {
           key: `${c.key}Kick`,
           frames: this.anims.generateFrameNumbers(c.kickSheet, {
             start: 0,
-            end: c.kickFrames - 1
+            end: c.kickEndFrame != null ? c.kickEndFrame : c.kickFrames - 1
           }),
           frameRate: c.kickFrameRate || c.kickFrames / (KICK_DURATION_MS / 1000),
           repeat: 0
@@ -619,6 +633,26 @@ class GameScene extends Phaser.Scene {
           frameRate:
             c.transformPunchFrameRate ||
             c.transformPunchFrames / (PUNCH_DURATION_MS / 1000),
+          repeat: 0
+        });
+      }
+      if (
+        c.transformPunchLeftSheet &&
+        !this.anims.exists(`${c.key}TransformPunchLeft`)
+      ) {
+        this.anims.create({
+          key: `${c.key}TransformPunchLeft`,
+          frames: this.anims.generateFrameNumbers(c.transformPunchLeftSheet, {
+            start:
+              c.transformPunchLeftStartFrame != null
+                ? c.transformPunchLeftStartFrame
+                : 0,
+            end:
+              c.transformPunchLeftEndFrame != null
+                ? c.transformPunchLeftEndFrame
+                : c.transformPunchLeftFrames - 1
+          }),
+          frameRate: c.transformPunchLeftFrameRate || 55,
           repeat: 0
         });
       }
@@ -679,37 +713,62 @@ class GameScene extends Phaser.Scene {
       }
     });
 
-    if (bgDef.sheet) {
-      this.background = this.add.sprite(
-        this.scale.width / 2,
-        this.scale.height / 2,
-        bgDef.key
-      );
-      this.background.setScale(
-        Math.max(
+    const bgSrc = bgDef.sheet
+      ? null
+      : this.textures.get(bgDef.key).getSourceImage();
+    const bgTexW = bgDef.sheet ? bgDef.frameW : bgSrc.width;
+    const bgCover = bgDef.sheet
+      ? Math.max(
           this.scale.width / bgDef.frameW,
           this.scale.height / bgDef.frameH
         )
-      );
-      this.background.setDepth(-1);
-      this.background.play(`${bgDef.key}Bg`);
-    } else {
-      this.background = this.add.image(
-        this.scale.width / 2,
-        this.scale.height / 2,
-        bgDef.key
-      );
-      const src = this.textures.get(bgDef.key).getSourceImage();
-      const cover = Math.max(
-        this.scale.width / src.width,
-        this.scale.height / src.height
-      );
-      this.background.setScale(cover);
-      this.background.setDepth(-1);
-    }
+      : Math.max(
+          this.scale.width / bgSrc.width,
+          this.scale.height / bgSrc.height
+        );
+    const bgW = bgTexW * bgCover;
+    const makeBgTile = (dx, flip) => {
+      let s;
+      if (bgDef.sheet) {
+        s = this.add.sprite(
+          this.scale.width / 2 + dx,
+          this.scale.height / 2,
+          bgDef.key
+        );
+        s.play(`${bgDef.key}Bg`);
+      } else {
+        s = this.add.image(
+          this.scale.width / 2 + dx,
+          this.scale.height / 2,
+          bgDef.key
+        );
+      }
+      s.setScale(bgCover).setDepth(-1).setFlipX(flip);
+      s.bgBaseX = this.scale.width / 2 + dx;
+      return s;
+    };
+    this.bgTiles = [
+      makeBgTile(0, false),
+      makeBgTile(-bgW, true),
+      makeBgTile(bgW, true)
+    ];
+    this.background = this.bgTiles[0];
+    this.bgPanMax = bgDef.pan != null ? bgDef.pan : Math.min(bgW / 2, 420);
+    this.bgParallax = bgDef.parallax != null ? bgDef.parallax : 0.35;
+    this.bgOffset = 0;
 
     this.fighter1 = this.addFighter(p1, this.p1X, true);
     this.fighter2 = this.addFighter(p2, this.p2X, false);
+
+    this.cameras.main.setBounds(
+      -WORLD_PAD,
+      0,
+      1280 + WORLD_PAD * 2,
+      this.scale.height
+    );
+    this.camTarget = this.add.zone(640, this.scale.height / 2, 2, 2);
+    this.cameras.main.startFollow(this.camTarget, true, 0.12, 0.12);
+    this.cameras.main.setDeadzone(this.scale.width * 0.42, this.scale.height);
 
     this.walkChar = p1.walkSheet || p1.jumpSheet ? p1 : null;
     this.walker = this.walkChar ? this.fighter1 : null;
@@ -764,6 +823,11 @@ class GameScene extends Phaser.Scene {
       this.punchChar && this.punchChar.transformPunchSheet
         ? `${this.punchChar.key}TransformPunch`
         : null;
+    this.transformPunchLeftKey =
+      this.punchChar && this.punchChar.transformPunchLeftSheet
+        ? `${this.punchChar.key}TransformPunchLeft`
+        : null;
+    this.punchComboUntil = 0;
     this.tauntKey = this.tauntChar ? `${this.tauntChar.key}Taunt` : null;
 
     this.kameChar = p1.kamehameha ? p1 : null;
@@ -861,7 +925,9 @@ class GameScene extends Phaser.Scene {
     if (this.puncher) {
       this.puncher.on('animationcomplete', (anim) => {
         if (
-          (anim.key === this.punchKey || anim.key === this.transformPunchKey) &&
+          (anim.key === this.punchKey ||
+            anim.key === this.transformPunchKey ||
+            anim.key === this.transformPunchLeftKey) &&
           this.punching
         ) {
           this.punching = false;
@@ -1027,6 +1093,25 @@ class GameScene extends Phaser.Scene {
     return { x: inter.centerX, y: inter.centerY };
   }
 
+  updateBackgroundParallax() {
+    if (!this.bgTiles || !this.bgTiles.length || !this.fighter1) {
+      return;
+    }
+    const focus =
+      this.fighter2 != null
+        ? (this.fighter1.x + this.fighter2.x) / 2
+        : this.fighter1.x;
+    const target = Phaser.Math.Clamp(
+      (focus - this.scale.width / 2) * this.bgParallax,
+      -this.bgPanMax,
+      this.bgPanMax
+    );
+    this.bgOffset = Phaser.Math.Linear(this.bgOffset || 0, target, 0.08);
+    for (const s of this.bgTiles) {
+      s.x = s.bgBaseX + this.bgOffset;
+    }
+  }
+
   drawDebugHitboxes() {
     if (!this.hitboxGfx) {
       return;
@@ -1156,7 +1241,8 @@ class GameScene extends Phaser.Scene {
         color: '#ffffff'
       })
       .setOrigin(0, 0)
-      .setDepth(28);
+      .setDepth(28)
+      .setScrollFactor(0);
     this.add
       .text(this.scale.width - 50, 54, p2.name, {
         fontFamily: 'monospace',
@@ -1165,27 +1251,35 @@ class GameScene extends Phaser.Scene {
         color: '#ffffff'
       })
       .setOrigin(1, 0)
-      .setDepth(28);
+      .setDepth(28)
+      .setScrollFactor(0);
 
     this.updateHealthBars(true);
   }
 
   makeBar(x, right, y, w, h) {
     const ox = right ? 1 : 0;
-    this.add.rectangle(x, y, w, h, 0x0d0f16).setOrigin(ox, 0.5).setDepth(25);
+    this.add
+      .rectangle(x, y, w, h, 0x0d0f16)
+      .setOrigin(ox, 0.5)
+      .setDepth(25)
+      .setScrollFactor(0);
     const ghost = this.add
       .rectangle(x, y, w - 4, h - 4, 0xff8a00)
       .setOrigin(ox, 0.5)
-      .setDepth(26);
+      .setDepth(26)
+      .setScrollFactor(0);
     const fill = this.add
       .rectangle(x, y, w - 4, h - 4, 0x3ddc6b)
       .setOrigin(ox, 0.5)
-      .setDepth(27);
+      .setDepth(27)
+      .setScrollFactor(0);
     this.add
       .rectangle(x, y, w, h)
       .setStrokeStyle(3, 0xffffff)
       .setOrigin(ox, 0.5)
-      .setDepth(28);
+      .setDepth(28)
+      .setScrollFactor(0);
     return { fill, ghost, maxW: w - 4, h: h - 4, ghostW: w - 4 };
   }
 
@@ -1222,16 +1316,19 @@ class GameScene extends Phaser.Scene {
     this.add
       .rectangle(x, y, SPECIAL_BAR_W, SPECIAL_BAR_H, 0x0d0f16)
       .setOrigin(0, 0.5)
-      .setDepth(25);
+      .setDepth(25)
+      .setScrollFactor(0);
     this.specialFill = this.add
       .rectangle(x + 2, y, SPECIAL_BAR_W - 4, SPECIAL_BAR_H - 4, 0x00e5ff)
       .setOrigin(0, 0.5)
-      .setDepth(27);
+      .setDepth(27)
+      .setScrollFactor(0);
     this.add
       .rectangle(x, y, SPECIAL_BAR_W, SPECIAL_BAR_H)
       .setStrokeStyle(2, 0xffffff)
       .setOrigin(0, 0.5)
-      .setDepth(28);
+      .setDepth(28)
+      .setScrollFactor(0);
     this.add
       .text(x, y - 18, 'ESPECIAL (Q)', {
         fontFamily: 'monospace',
@@ -1240,7 +1337,8 @@ class GameScene extends Phaser.Scene {
         color: '#00e5ff'
       })
       .setOrigin(0, 0)
-      .setDepth(28);
+      .setDepth(28)
+      .setScrollFactor(0);
     this.updateSpecialBar();
   }
 
@@ -1950,7 +2048,8 @@ class GameScene extends Phaser.Scene {
       .rectangle(0, 0, this.scale.width, this.scale.height, 0x06030f)
       .setOrigin(0)
       .setAlpha(0)
-      .setDepth(40);
+      .setDepth(40)
+      .setScrollFactor(0);
     this.tweens.add({ targets: dim, alpha: 0.6, duration: 400 });
 
     const rays = 24;
@@ -1961,7 +2060,8 @@ class GameScene extends Phaser.Scene {
         .rectangle(cx, cy - 20, 12, len, i % 2 ? 0xff2d95 : 0x00e5ff, 0.85)
         .setOrigin(0.5)
         .setDepth(41)
-        .setBlendMode(Phaser.BlendModes.ADD);
+        .setBlendMode(Phaser.BlendModes.ADD)
+        .setScrollFactor(0);
       ray.setRotation(ang);
       ray.x = cx + Math.cos(ang) * (len / 2);
       ray.y = cy - 20 + Math.sin(ang) * (len / 2);
@@ -2079,6 +2179,15 @@ class GameScene extends Phaser.Scene {
         knockback: LIGHT_KNOCKBACK,
         contact: this.contactPoint(hit, hurt)
       });
+      if (
+        state === 'transformPunch' &&
+        this.punchChar &&
+        this.punchChar.transformPunchLeftSheet
+      ) {
+        this.punchComboUntil =
+          this.time.now +
+          (this.punchChar.transformPunchComboMs || 700);
+      }
     }
   }
 
@@ -2537,13 +2646,26 @@ class GameScene extends Phaser.Scene {
     sprite.play(`${c.key}Kick`);
   }
 
-  applyPunch(c, sprite) {
-    const transform =
-      sprite.transformed && c.transformPunchSheet;
-    const sheet = transform ? c.transformPunchSheet : c.punchSheet;
-    const originY = transform ? c.transformPunchOriginY : c.punchOriginY;
-    const sourceH = transform ? c.transformPunchSourceH : c.punchSourceH;
-    const key = transform ? `${c.key}TransformPunch` : `${c.key}Punch`;
+  applyPunch(c, sprite, combo) {
+    const left = combo && sprite.transformed && c.transformPunchLeftSheet;
+    const transform = sprite.transformed && (left || c.transformPunchSheet);
+    let sheet, originY, sourceH, key;
+    if (left) {
+      sheet = c.transformPunchLeftSheet;
+      originY = c.transformPunchLeftOriginY;
+      sourceH = c.transformPunchLeftSourceH;
+      key = `${c.key}TransformPunchLeft`;
+    } else if (transform) {
+      sheet = c.transformPunchSheet;
+      originY = c.transformPunchOriginY;
+      sourceH = c.transformPunchSourceH;
+      key = `${c.key}TransformPunch`;
+    } else {
+      sheet = c.punchSheet;
+      originY = c.punchOriginY;
+      sourceH = c.punchSourceH;
+      key = `${c.key}Punch`;
+    }
     if (sprite.texture.key !== sheet) {
       sprite.setTexture(sheet);
       sprite.setOrigin(0.5, originY);
@@ -3415,6 +3537,13 @@ class GameScene extends Phaser.Scene {
       this.debugHitboxes = !this.debugHitboxes;
     }
     this.drawDebugHitboxes();
+    if (this.camTarget) {
+      this.camTarget.x = Phaser.Math.Clamp(
+        (this.fighter1.x + this.fighter2.x) / 2,
+        -WORLD_PAD,
+        1280 + WORLD_PAD
+      );
+    }
     if (TEST_AUTO_GUARD && this.time.now >= this.testGuardNext) {
       this.testP2Guard = !this.testP2Guard;
       this.testGuardNext = this.time.now + 1600;
@@ -3526,12 +3655,18 @@ class GameScene extends Phaser.Scene {
       this.jumpLandAt != null &&
       this.time.now >= this.jumpLandAt
     ) {
+      const wasAirKick = this.airKicking;
       this.airKicking = false;
       this.kicking = false;
       this.jumping = false;
       this.jumpDir = 0;
       this.punching = false;
-      this.jumpLanded = true;
+      if (wasAirKick) {
+        this.jumpLanded = false;
+        this.blendToIdle(this.walkChar, this.walker);
+      } else {
+        this.jumpLanded = true;
+      }
     }
 
     if (this.jumping) {
@@ -3634,10 +3769,21 @@ class GameScene extends Phaser.Scene {
       punchOpen &&
       Phaser.Input.Keyboard.JustDown(this.keys.F)
     ) {
+      const combo =
+        this.time.now < this.punchComboUntil &&
+        this.punchChar.transformPunchLeftSheet;
+      if (combo) {
+        this.punchComboUntil = 0;
+      }
       this.punching = true;
       this.punchStartTime = this.time.now;
-      this.applyPunch(this.punchChar, this.puncher);
-      this.time.delayedCall(this.punchHitDelay(), () => this.punchHit(this.puncher));
+      this.applyPunch(this.punchChar, this.puncher, combo);
+      this.time.delayedCall(
+        combo
+          ? this.punchChar.transformPunchLeftHitMs || PUNCH_HIT_MS
+          : this.punchHitDelay(),
+        () => this.punchHit(this.puncher)
+      );
       return;
     }
 
@@ -3705,7 +3851,8 @@ class GameScene extends Phaser.Scene {
 
     const dim = this.add
       .rectangle(cx, cy, this.scale.width, 180, 0x000000, 0.35)
-      .setDepth(29);
+      .setDepth(29)
+      .setScrollFactor(0);
 
     const round = this.add
       .text(cx, cy, 'ROUND 1', {
@@ -3717,7 +3864,8 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(30)
       .setAlpha(0)
-      .setScale(2.5);
+      .setScale(2.5)
+      .setScrollFactor(0);
     round.setStroke('#ff2d95', 10);
 
     const fight = this.add
@@ -3730,7 +3878,8 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(30)
       .setAlpha(0)
-      .setScale(0.2);
+      .setScale(0.2)
+      .setScrollFactor(0);
     fight.setStroke('#ffffff', 8);
 
     this.tweens.add({
